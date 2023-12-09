@@ -9,7 +9,7 @@ import javax.persistence.Index;
 @Entity
 @Getter
 @Setter
-@Table(indexes = @Index(name = "path_index", columnList = "path", unique = true))
+//@Table(indexes = @Index(name = "path_index", columnList = "path", unique = true))
 public class Page {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

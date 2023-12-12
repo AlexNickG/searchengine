@@ -10,24 +10,28 @@ import searchengine.dto.statistics.ResponseMessage;
 import searchengine.model.Site;
 import searchengine.model.Status;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.ForkJoinPool;
 
 @Service
 @RequiredArgsConstructor
 public class IndexingServiceImpl implements IndexingService {
+    int cores =Runtime.getRuntime().availableProcessors();
     private final SitesList sites;
+    @Autowired
     SiteRepository siteRepository;
+    @Autowired
     PageRepository pageRepository;
 
 
     @Override
-    public ResponseMessage getResponse() {
-        ResponseMessage responseMessage = new ResponseMessage();
+    public ResponseMessage startIndexing() {
+
         List<Site> sites = siteRepository.findAll();
         if (sites.isEmpty()) {
-            responseMessage.setResult(false);
-            responseMessage.setError("Индексация уже запущена");
-            return responseMessage;
+            indexing();
+            return sendResponse(false, "Индексация запущена");
         } else {
             boolean status = true;
             for (Site site : sites) {
@@ -36,13 +40,29 @@ public class IndexingServiceImpl implements IndexingService {
                 }
             }
             if (!status) {
-                responseMessage.setResult(false);
-                responseMessage.setError("Индексация уже запущена");
-                return responseMessage;
+                return sendResponse(false, "Индексация уже запущена");
             } else {
-                responseMessage.setResult(true);
-                return responseMessage;
+                return sendResponse(true, "");
             }
         }
+    }
+    public ResponseMessage sendResponse (boolean result, String message) {
+        ResponseMessage responseMessage = new ResponseMessage();
+        responseMessage.setResult(result);
+        responseMessage.setError(message);
+        return responseMessage;
+    }
+
+    public void indexing() {
+        new ForkJoinPool(cores).invoke(new Indexing("https://skillbox.ru", siteRepository, pageRepository));
+
+//        String url = "http://skillbox.ru";
+//        Site site = new Site();
+//        site.setUrl(url);
+//        site.setName("Skillbox");
+//        site.setStatusTime(LocalDateTime.now());
+//        site.setStatus(Status.INDEXING);
+//        site.setLastError("Ok");
+//        siteRepository.save(site);
     }
 }

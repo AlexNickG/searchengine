@@ -30,7 +30,7 @@ public class IndexingServiceImpl implements IndexingService {
 
         List<Site> sites = siteRepository.findAll();
         if (sites.isEmpty()) {
-            indexing();
+            indexing("https://skillbox.ru");
             return sendResponse(false, "Индексация запущена");
         } else {
             boolean status = true;
@@ -53,8 +53,14 @@ public class IndexingServiceImpl implements IndexingService {
         return responseMessage;
     }
 
-    public void indexing() {
-        new ForkJoinPool(cores).invoke(new Indexing("https://skillbox.ru", siteRepository, pageRepository));
+    public void indexing(String url) {
+        Site site = new Site();
+        site.setUrl("https://skillbox.ru");
+        site.setStatus(Status.INDEXING);
+        site.setName("Skillbox");
+        site.setStatusTime(LocalDateTime.now());
+        siteRepository.save(site);
+        new ForkJoinPool(cores).invoke(new Indexing(site, url, siteRepository, pageRepository));
 
 //        String url = "http://skillbox.ru";
 //        Site site = new Site();

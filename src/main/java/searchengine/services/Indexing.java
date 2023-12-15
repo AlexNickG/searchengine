@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 public class Indexing extends RecursiveAction {
     PageRepository pageRepository;
     SiteRepository siteRepository;
+    Site site;
 
     /*@Value("${userAgent в application.yml}")
     private String userAgent;
@@ -36,7 +37,8 @@ public class Indexing extends RecursiveAction {
     @Value("${timeout в application.yml}")
     private int timeout;*/
 
-    public Indexing(String link, SiteRepository siteRepository, PageRepository pageRepository) {
+    public Indexing(Site site, String link, SiteRepository siteRepository, PageRepository pageRepository) {
+        this.site = site;
         this.link = link;
         this.siteRepository = siteRepository;
         this.pageRepository = pageRepository;
@@ -72,16 +74,13 @@ public class Indexing extends RecursiveAction {
 
 
         Page page = new Page();
-        Site site = new Site();
-        site.setUrl("https://skillbox.ru");
-        site.setStatus(Status.INDEXING);
-        site.setName("Skillbox");
-        site.setStatusTime(LocalDateTime.now());
+
         page.setSite(site);
         page.setPath(link);
         page.setCode(response.statusCode());
         page.setContent(document.text());
-        siteRepository.save(site);
+        page.setContent(document.text());
+
         pageRepository.save(page);
 
 
@@ -99,7 +98,7 @@ public class Indexing extends RecursiveAction {
         //Main.globalLinksSet.addAll(linksSet);
 
         for (String subLink : linksSet) {
-            Indexing parse = new Indexing(subLink, siteRepository, pageRepository);
+            Indexing parse = new Indexing(site, subLink, siteRepository, pageRepository);
             parse.fork();
             taskList.add(parse);
         }

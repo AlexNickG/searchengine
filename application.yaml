@@ -17,14 +17,14 @@ spring:
 
 indexing-settings:
   sites:
-    - url: https://www.lenta.ru
+    - url: https://lenta.ru/
       name: Лента.ру
-    - url: https://www.skillbox.ru
+    - url: https://skillbox.ru
       name: Skillbox
-    - url: https://www.playback.ru
-      name: PlayBack.Ru
+    #- url: https://playback.ru
+    #  name: PlayBack.Ru
 
 connection-settings:
-  userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:25.0) Gecko/20100101 Firefox/25.0 Chrome/51.0.2704.106 Safari/537.36 OPR/38.0.2220.41"
+  userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:25.0) Gecko/20100101 Firefox/25.0 Chrome/51.0.2704.106 Safari/537.36 OPR/38.0.2220.41
   referrer: http://google.com
   timeout: 1000

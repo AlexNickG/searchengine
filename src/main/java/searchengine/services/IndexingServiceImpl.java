@@ -1,7 +1,9 @@
 package searchengine.services;
 
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Service;
 import searchengine.Repositories.PageRepository;
 import searchengine.Repositories.SiteRepository;
@@ -11,58 +13,142 @@ import searchengine.model.Site;
 import searchengine.model.Status;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.*;
 
+@Getter
+@Setter
 @Service
 @RequiredArgsConstructor
+@ConfigurationProperties(prefix = "connection-settings")
 public class IndexingServiceImpl implements IndexingService {
-    int cores =Runtime.getRuntime().availableProcessors();
-    private final SitesList sites;
-    @Autowired
-    SiteRepository siteRepository;
-    @Autowired
-    PageRepository pageRepository;
 
+    private int cores = Runtime.getRuntime().availableProcessors();
+
+    private final SitesList sites;
+
+    private Site site = new Site();
+
+    private List<Site> sitesList = new ArrayList<>();
+
+    private final SiteRepository siteRepository;
+
+    private final PageRepository pageRepository;
+
+    public static ConcurrentSkipListSet<String> globalLinksSet = new ConcurrentSkipListSet<>();
+
+    public static volatile boolean stopIndexing = false;
+
+    private ForkJoinPool forkJoinPool = new ForkJoinPool();
+
+    public List<RunnableFuture<String>> threadList = new ArrayList<>();
+
+    public List<ForkJoinTask<Void>> fjpList = new ArrayList<>();
 
     @Override
     public ResponseMessage startIndexing() {
+        stopIndexing = false;
+        threadList.clear();
+        List<Site> indexingSites = siteRepository.findAll();
 
-        List<Site> sites = siteRepository.findAll();
-        if (sites.isEmpty()) {
-            indexing();
-            return sendResponse(false, "Индексация запущена");
+        if (indexingSites.stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
+            return sendResponse(false, "Индексация уже запущена");
         } else {
-            boolean status = true;
-            for (Site site : sites) {
-                if (site.getStatus() == Status.INDEXING) {
-                    status = false;
-                }
+            pageRepository.deleteAll();
+            siteRepository.deleteAll();
+            for (int i = 0; i < sites.getSites().size(); i++) {
+                threadList.add(new FutureTask<>(new StartIndexing(i), "Thread"));
             }
-            if (!status) {
-                return sendResponse(false, "Индексация уже запущена");
-            } else {
-                return sendResponse(true, "");
-            }
+            ExecutorService executor = Executors.newFixedThreadPool(sites.getSites().size() + 1);
+            threadList.forEach(executor::execute);
+            executor.shutdown();
+            return sendResponse(true, "");
         }
     }
-    public ResponseMessage sendResponse (boolean result, String message) {
+
+    @Override
+    public ResponseMessage stopIndexing() {
+        //forkJoinPool.shutdownNow();
+        stopIndexing = true;
+        forkJoinPool.shutdownNow();
+        /*for (Iterator<ForkJoinTask<Void>> futureIterator = fjpList.iterator(); futureIterator.hasNext(); ) {
+
+            ForkJoinTask<Void> future = futureIterator.next();
+
+            if (future.isDone()) {
+                try {
+                    System.out.println("Выполнена " + future.get());
+                    futureIterator.remove();
+                } catch (InterruptedException | ExecutionException e) {
+                    throw new RuntimeException(e);
+                }
+            } else {
+                future.cancel(true);
+                System.out.println("Задача остановлена, результат её работы не требуется");
+            }
+        }*/
+
+        //threadList.forEach(Thread::interrupt);
+        //forkJoinPool.shutdownNow();
+        List<Site> sites = siteRepository.findAll();
+        if (sites.stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
+            //TODO: update statuses and errors for Site
+            for (Site site : sites) {
+                if (site.getStatus() == Status.INDEXING) {
+                    site = siteRepository.findById(site.getId()).get(); //TODO: add check ifPresent
+                    site.setStatus(Status.FAILED);
+                    site.setLastError("Индексация остановлена пользователем");
+                    site.setStatusTime(LocalDateTime.now());
+                    siteRepository.saveAndFlush(site); //save vs saveAndFlush
+                }
+            }
+            return sendResponse(true, "");
+        } else {
+            return sendResponse(false, "Индексация не запущена");
+        }
+    }
+
+    public ResponseMessage sendResponse(boolean result, String message) {
         ResponseMessage responseMessage = new ResponseMessage();
         responseMessage.setResult(result);
         responseMessage.setError(message);
         return responseMessage;
     }
 
-    public void indexing() {
-        new ForkJoinPool(cores).invoke(new Indexing("https://skillbox.ru", siteRepository, pageRepository));
 
-//        String url = "http://skillbox.ru";
-//        Site site = new Site();
-//        site.setUrl(url);
-//        site.setName("Skillbox");
-//        site.setStatusTime(LocalDateTime.now());
-//        site.setStatus(Status.INDEXING);
-//        site.setLastError("Ok");
-//        siteRepository.save(site);
+    @RequiredArgsConstructor
+    public class StartIndexing implements Runnable {
+
+        private final int siteNumber;
+
+        @Override
+        public void run() {
+            String link = sites.getSites().get(siteNumber).getUrl();
+            Site site = new Site();
+            site.setUrl(link);
+            site.setStatus(Status.INDEXING);
+            site.setName(sites.getSites().get(siteNumber).getName());
+            site.setStatusTime(LocalDateTime.now());
+            siteRepository.save(site);
+            Indexing indexing = new Indexing(link, site, siteRepository, pageRepository);
+            fjpList.add(indexing);
+            ForkJoinTask<Void> task = forkJoinPool.submit(indexing);
+            if (task.isCancelled() || task.isCompletedAbnormally()) {
+                site.setUrl(link);
+                site.setStatus(Status.FAILED);
+                site.setName(sites.getSites().get(siteNumber).getName());
+                site.setStatusTime(LocalDateTime.now());
+                siteRepository.save(site);
+            }
+            if (task.isDone()) {
+                site.setUrl(link);
+                site.setStatus(Status.INDEXED);
+                site.setName(sites.getSites().get(siteNumber).getName());
+                site.setStatusTime(LocalDateTime.now());
+                siteRepository.save(site);
+            }
+        }
     }
 }

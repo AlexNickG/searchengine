@@ -43,14 +43,14 @@ public class IndexingServiceImpl implements IndexingService {
 
     private ForkJoinPool forkJoinPool = new ForkJoinPool();
 
-    public List<RunnableFuture<String>> threadList = new ArrayList<>();
+    public List<Runnable> threadList = new ArrayList<>();
 
     public List<ForkJoinTask<Void>> fjpList = new ArrayList<>();
 
     @Override
     public ResponseMessage startIndexing() {
-        stopIndexing = false;
-        threadList.clear();
+//        stopIndexing = false;
+//        threadList.clear();
         List<Site> indexingSites = siteRepository.findAll();
 
         if (indexingSites.stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
@@ -59,20 +59,23 @@ public class IndexingServiceImpl implements IndexingService {
             pageRepository.deleteAll();
             siteRepository.deleteAll();
             for (int i = 0; i < sites.getSites().size(); i++) {
-                threadList.add(new FutureTask<>(new StartIndexing(i), "Thread"));
+                threadList.add(new StartIndexing(i));
             }
-            ExecutorService executor = Executors.newFixedThreadPool(sites.getSites().size() + 1);
+            ExecutorService executor = Executors.newFixedThreadPool(5);
             threadList.forEach(executor::execute);
-            executor.shutdown();
+            //executor.shutdown();
             return sendResponse(true, "");
         }
     }
 
     @Override
     public ResponseMessage stopIndexing() {
+
+        Interrupter interrupter = new Interrupter(fjpList);
+        interrupter.interrupt();
         //forkJoinPool.shutdownNow();
-        stopIndexing = true;
-        forkJoinPool.shutdownNow();
+        //stopIndexing = true;
+        //forkJoinPool.shutdownNow();
         /*for (Iterator<ForkJoinTask<Void>> futureIterator = fjpList.iterator(); futureIterator.hasNext(); ) {
 
             ForkJoinTask<Void> future = futureIterator.next();
@@ -135,7 +138,7 @@ public class IndexingServiceImpl implements IndexingService {
             Indexing indexing = new Indexing(link, site, siteRepository, pageRepository);
             fjpList.add(indexing);
             ForkJoinTask<Void> task = forkJoinPool.submit(indexing);
-            if (task.isCancelled() || task.isCompletedAbnormally()) {
+            /*if (task.isCancelled() || task.isCompletedAbnormally()) {
                 site.setUrl(link);
                 site.setStatus(Status.FAILED);
                 site.setName(sites.getSites().get(siteNumber).getName());
@@ -148,7 +151,15 @@ public class IndexingServiceImpl implements IndexingService {
                 site.setName(sites.getSites().get(siteNumber).getName());
                 site.setStatusTime(LocalDateTime.now());
                 siteRepository.save(site);
-            }
+            }*/
+        }
+    }
+    @RequiredArgsConstructor
+    public class Interrupter {
+        final List<ForkJoinTask<Void>> fjpList;
+
+        public void interrupt() {
+            fjpList.forEach(t -> t.cancel(true));
         }
     }
 }

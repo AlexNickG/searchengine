@@ -39,7 +39,7 @@ public class Indexing extends RecursiveAction {
     private int timeout;
 
 
-    List<Indexing> taskList = new ArrayList<>();
+    private List<Indexing> taskList = new ArrayList<>();
 
 
 
@@ -67,13 +67,13 @@ public class Indexing extends RecursiveAction {
         return super.cancel(true);
     }
 
-    @SneakyThrows
+    //@SneakyThrows
     @Override
     protected void compute() {
 
-        if (this.isCancelled()) {
+        /*if (this.isCancelled()) {
             cancel(true);
-        }
+        }*/
 
         Set<String> linksSet;
 
@@ -85,7 +85,7 @@ public class Indexing extends RecursiveAction {
 //            response = Jsoup.connect(link).execute();
             Thread.sleep(950);
             document = Jsoup.connect(link).userAgent(userAgent).get();
-        } catch (IOException e) {
+        } catch (IOException | InterruptedException e) {
             System.out.println("Broken link: " + link);
             return;
         }

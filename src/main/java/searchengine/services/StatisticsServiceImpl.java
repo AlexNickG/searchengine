@@ -42,14 +42,13 @@ public class StatisticsServiceImpl implements StatisticsService {
             DetailedStatisticsItem item = new DetailedStatisticsItem();
             item.setName(site.getName());
             item.setUrl(site.getUrl());
-            int pages = 0; //(int) pageRepository
+            int pages = (int) pageRepository.count();
             int lemmas = (int) pageRepository.count();
             item.setPages(pages);
             item.setLemmas(lemmas);
             item.setStatus(String.valueOf(site.getStatus()));
             item.setError(site.getLastError());
-            item.setStatusTime(System.currentTimeMillis() -
-                    (random.nextInt(10_000)));
+            item.setStatusTime(System.currentTimeMillis());
             total.setPages(total.getPages() + pages);
             total.setLemmas(total.getLemmas() + lemmas);
             detailed.add(item);

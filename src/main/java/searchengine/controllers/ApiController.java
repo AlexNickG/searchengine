@@ -60,11 +60,11 @@ public class ApiController {
 //        return ResponseEntity.ok();
 //    }
 
-    @PreDestroy
+    /*@PreDestroy
     public void deleteTables() {
         System.out.println("deleting tables");
         pageRepository.deleteAll();
         siteRepository.deleteAll();
 
-    }
+    }*/
 }

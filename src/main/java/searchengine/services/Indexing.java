@@ -34,7 +34,7 @@ public class Indexing extends RecursiveAction {
     private Site site;
     final private String link;
     //@Value("${connection-settings.userAgent}")
-    private String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:25.0) Gecko/20100101 Firefox/25.0 Chrome/51.0.2704.106 Safari/537.36 OPR/38.0.2220.41";
+    private String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
     private String referrer;
     private int timeout;
 
@@ -71,9 +71,9 @@ public class Indexing extends RecursiveAction {
     @Override
     protected void compute() {
 
-        /*if (this.isCancelled()) {
+        if (IndexingServiceImpl.stop) {
             cancel(true);
-        }*/
+        }
 
         Set<String> linksSet;
 
@@ -83,7 +83,7 @@ public class Indexing extends RecursiveAction {
         try {
 //            Thread.sleep(950);
 //            response = Jsoup.connect(link).execute();
-            Thread.sleep(950);
+            Thread.sleep(550);
             document = Jsoup.connect(link).userAgent(userAgent).get();
         } catch (IOException | InterruptedException e) {
             System.out.println("Broken link: " + link);
@@ -104,7 +104,7 @@ public class Indexing extends RecursiveAction {
 
         linksSet = document.select("a").stream()
                 .map(e -> e.attr("abs:href"))
-                .filter(e -> e.startsWith(link)
+                .filter(e -> e.startsWith(site.getUrl())
                         && !e.contains("#")
                         && !e.endsWith(".jpg")
                         && !e.endsWith(".pdf")
@@ -112,7 +112,8 @@ public class Indexing extends RecursiveAction {
                         && !e.contains("?"))
                 .collect(Collectors.toSet());
 
-        if (this.isCancelled()) {
+        if (IndexingServiceImpl.stop) {
+            System.out.println("cancelled");
             linksSet.clear();
         }
 
@@ -121,12 +122,11 @@ public class Indexing extends RecursiveAction {
         for (String subLink : linksSet) {
             Indexing parse = new Indexing(subLink, site, siteRepository, pageRepository);
 
-            //parse.fork();
             taskList.add(parse);
         }
         ForkJoinTask.invokeAll(taskList);
-        //System.out.println("Set size: " + Main.globalLinksSet.size());
+        System.out.println("Set size: " + IndexingServiceImpl.globalLinksSet.size());
         taskList.forEach(Indexing::join);
-        System.out.println("Indexing ended");
+        //System.out.println("Indexing ended");
     }
 }

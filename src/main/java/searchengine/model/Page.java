@@ -17,13 +17,13 @@ public class Page {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
-    @ManyToOne(cascade = CascadeType.ALL)
+    @ManyToOne(cascade = CascadeType.MERGE)
     @JoinColumn(name = "site_id", referencedColumnName = "id", nullable = false)
     private Site site;
     @Column(columnDefinition = "TEXT NOT NULL, Index(path(512))")
     private String path;
     @Column(columnDefinition = "INT NOT NULL")
     private int code;
-    @Column(columnDefinition = "MEDIUMTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci", nullable = false)
+    @Column(columnDefinition = "MEDIUMTEXT NOT NULL")
     private String content;
 }

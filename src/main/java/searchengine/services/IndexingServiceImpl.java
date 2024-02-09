@@ -27,6 +27,8 @@ public class IndexingServiceImpl implements IndexingService {
 
     private int cores = Runtime.getRuntime().availableProcessors();
 
+    private ExecutorService executor;
+
     private final SitesList sites;
 
     private Site site = new Site();
@@ -40,8 +42,9 @@ public class IndexingServiceImpl implements IndexingService {
     public static ConcurrentSkipListSet<String> globalLinksSet = new ConcurrentSkipListSet<>();
 
     public static volatile boolean stopIndexing = false;
+    public static volatile boolean stop;
 
-    private ForkJoinPool forkJoinPool = new ForkJoinPool();
+    //private ForkJoinPool forkJoinPool = new ForkJoinPool();
 
     public List<Runnable> threadList = new ArrayList<>();
 
@@ -49,21 +52,30 @@ public class IndexingServiceImpl implements IndexingService {
 
     @Override
     public ResponseMessage startIndexing() {
-//        stopIndexing = false;
-//        threadList.clear();
+
+
         List<Site> indexingSites = siteRepository.findAll();
 
         if (indexingSites.stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
             return sendResponse(false, "Индексация уже запущена");
         } else {
+            threadList.clear();
+            if (executor != null) {
+                executor.shutdown();
+            }
+            globalLinksSet.clear();
+            stop = false;
+            stopIndexing = false;
             pageRepository.deleteAll();
             siteRepository.deleteAll();
+            executor = Executors.newFixedThreadPool(sites.getSites().size());
             for (int i = 0; i < sites.getSites().size(); i++) {
-                threadList.add(new StartIndexing(i));
+                threadList.add(new StartIndexing(i)); //How to start threads in ExecutorService?
             }
-            ExecutorService executor = Executors.newFixedThreadPool(5);
+
             threadList.forEach(executor::execute);
-            //executor.shutdown();
+            System.out.println("Started threads: " + threadList.size());
+            //
             return sendResponse(true, "");
         }
     }
@@ -71,43 +83,25 @@ public class IndexingServiceImpl implements IndexingService {
     @Override
     public ResponseMessage stopIndexing() {
 
-        Interrupter interrupter = new Interrupter(fjpList);
-        interrupter.interrupt();
-        //forkJoinPool.shutdownNow();
-        //stopIndexing = true;
-        //forkJoinPool.shutdownNow();
-        /*for (Iterator<ForkJoinTask<Void>> futureIterator = fjpList.iterator(); futureIterator.hasNext(); ) {
-
-            ForkJoinTask<Void> future = futureIterator.next();
-
-            if (future.isDone()) {
-                try {
-                    System.out.println("Выполнена " + future.get());
-                    futureIterator.remove();
-                } catch (InterruptedException | ExecutionException e) {
-                    throw new RuntimeException(e);
-                }
-            } else {
-                future.cancel(true);
-                System.out.println("Задача остановлена, результат её работы не требуется");
-            }
-        }*/
-
-        //threadList.forEach(Thread::interrupt);
-        //forkJoinPool.shutdownNow();
         List<Site> sites = siteRepository.findAll();
         if (sites.stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
-            //TODO: update statuses and errors for Site
-            for (Site site : sites) {
+            stop = true;
+            //fjpList.forEach(t -> t.cancel(true)); //TODO: cancel tasks by use iterator
+
+            /*for (Site site : sites) {
                 if (site.getStatus() == Status.INDEXING) {
-                    site = siteRepository.findById(site.getId()).get(); //TODO: add check ifPresent
-                    site.setStatus(Status.FAILED);
-                    site.setLastError("Индексация остановлена пользователем");
-                    site.setStatusTime(LocalDateTime.now());
-                    siteRepository.saveAndFlush(site); //save vs saveAndFlush
+                    site = siteRepository.findById(site.getId()).get();
+
+                }
+            }*/
+            //TODO: wait for ForkJoinPool shutdown
+            while (true) {
+                if (stopIndexing) {
+                    executor.shutdown(); //Executor shutdown completed, but one thread is working
+                    threadList.clear();
+                    return sendResponse(true, "");
                 }
             }
-            return sendResponse(true, "");
         } else {
             return sendResponse(false, "Индексация не запущена");
         }
@@ -135,31 +129,35 @@ public class IndexingServiceImpl implements IndexingService {
             site.setName(sites.getSites().get(siteNumber).getName());
             site.setStatusTime(LocalDateTime.now());
             siteRepository.save(site);
+            ForkJoinPool forkJoinPool = new ForkJoinPool();
             Indexing indexing = new Indexing(link, site, siteRepository, pageRepository);
             fjpList.add(indexing);
             ForkJoinTask<Void> task = forkJoinPool.submit(indexing);
-            /*if (task.isCancelled() || task.isCompletedAbnormally()) {
-                site.setUrl(link);
-                site.setStatus(Status.FAILED);
-                site.setName(sites.getSites().get(siteNumber).getName());
-                site.setStatusTime(LocalDateTime.now());
-                siteRepository.save(site);
+            while (true) {
+                if (task.isCompletedAbnormally()) {
+                    site.setUrl(link);
+                    site.setStatus(Status.FAILED);
+                    site.setLastError("Индексация остановлена пользователем");
+                    site.setName(sites.getSites().get(siteNumber).getName());
+                    site.setStatusTime(LocalDateTime.now());
+                    siteRepository.save(site); //save vs saveAndFlush
+                    forkJoinPool.shutdown();
+                    System.out.println("the task was cancelled");
+                    stopIndexing = true;
+                    break;
+                }
+                if (task.isCompletedNormally()) {
+                    site.setUrl(link);
+                    site.setStatus(Status.INDEXED);
+                    site.setName(sites.getSites().get(siteNumber).getName());
+                    site.setStatusTime(LocalDateTime.now());
+                    siteRepository.save(site);
+                    forkJoinPool.shutdown();
+                    System.out.println("The task was done");
+                    stopIndexing = true;
+                    break;
+                }
             }
-            if (task.isDone()) {
-                site.setUrl(link);
-                site.setStatus(Status.INDEXED);
-                site.setName(sites.getSites().get(siteNumber).getName());
-                site.setStatusTime(LocalDateTime.now());
-                siteRepository.save(site);
-            }*/
-        }
-    }
-    @RequiredArgsConstructor
-    public class Interrupter {
-        final List<ForkJoinTask<Void>> fjpList;
-
-        public void interrupt() {
-            fjpList.forEach(t -> t.cancel(true));
         }
     }
 }

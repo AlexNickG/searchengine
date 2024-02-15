@@ -7,6 +7,7 @@ import lombok.Setter;
 
 import javax.persistence.*;
 import javax.persistence.Index;
+import java.util.List;
 
 @Entity
 @Getter
@@ -26,4 +27,9 @@ public class Page {
     private int code;
     @Column(columnDefinition = "MEDIUMTEXT NOT NULL")
     private String content;
+    @ManyToMany(cascade = CascadeType.ALL)
+    @JoinTable(name = "index",
+            joinColumns = {@JoinColumn(name = "page_id")},
+            inverseJoinColumns = {@JoinColumn(name = "lemma_id")})
+    private List<Lemma> lemmas;
 }

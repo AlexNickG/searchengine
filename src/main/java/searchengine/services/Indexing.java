@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+import searchengine.Repositories.LemmaRepository;
 import searchengine.Repositories.PageRepository;
 import searchengine.Repositories.SiteRepository;
 import searchengine.model.Page;
@@ -31,6 +32,8 @@ import java.util.stream.Collectors;
 public class Indexing extends RecursiveAction {
     private PageRepository pageRepository;
     private SiteRepository siteRepository;
+    private LemmaRepository lemmaRepository;
+    private LemmaFinder lemmaFinder;
     private Site site;
     final private String link;
     //@Value("${connection-settings.userAgent}")
@@ -52,10 +55,12 @@ public class Indexing extends RecursiveAction {
     @Value("${timeout в application.yml}")
     private int timeout;*/
 
-    public Indexing(String link, Site site, SiteRepository siteRepository, PageRepository pageRepository) {
+    public Indexing(String link, Site site, SiteRepository siteRepository, PageRepository pageRepository, LemmaRepository lemmaRepository, LemmaFinder lemmaFinder) {
         this.link = link;
         this.siteRepository = siteRepository;
         this.pageRepository = pageRepository;
+        this.lemmaRepository = lemmaRepository;
+        this.lemmaFinder = lemmaFinder;
         this.site = site;
 
         //System.out.println("indexing starts");
@@ -100,12 +105,14 @@ public class Indexing extends RecursiveAction {
         page.setCode(document.connection().response().statusCode());
         page.setContent(document.text());
         pageRepository.save(page);
+        lemmaFinder.collectLemmas(page);
+
 
 
         linksSet = document.select("a").stream()
                 .map(e -> e.attr("abs:href"))
                 .filter(e -> e.startsWith(site.getUrl())
-                        && !e.contains("#")
+                        && !e.contains("#") //TODO: add to config
                         && !e.endsWith(".jpg")
                         && !e.endsWith(".pdf")
                         && !e.endsWith(".png")
@@ -120,7 +127,7 @@ public class Indexing extends RecursiveAction {
         linksSet.removeAll(IndexingServiceImpl.globalLinksSet);
         IndexingServiceImpl.globalLinksSet.addAll(linksSet);
         for (String subLink : linksSet) {
-            Indexing parse = new Indexing(subLink, site, siteRepository, pageRepository);
+            Indexing parse = new Indexing(subLink, site, siteRepository, pageRepository, lemmaRepository, lemmaFinder);
 
             taskList.add(parse);
         }

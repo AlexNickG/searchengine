@@ -29,7 +29,9 @@ public class Site {
     private String url;
     @Column(columnDefinition = "VARCHAR(255) NOT NULL")
     private String name;
-//    @OneToMany(mappedBy = "site")
-//    private List<Page> pageList = new ArrayList<>();
+    @OneToMany(mappedBy = "site", cascade = CascadeType.ALL)
+    private List<Page> pageList = new ArrayList<>();
+    @OneToMany(mappedBy = "site", cascade = CascadeType.ALL)
+    private List<Lemma> lemmaList = new ArrayList<>();
 
 }

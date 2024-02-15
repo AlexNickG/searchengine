@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Service;
+import searchengine.Repositories.LemmaRepository;
 import searchengine.Repositories.PageRepository;
 import searchengine.Repositories.SiteRepository;
 import searchengine.config.SitesList;
@@ -38,6 +39,10 @@ public class IndexingServiceImpl implements IndexingService {
     private final SiteRepository siteRepository;
 
     private final PageRepository pageRepository;
+
+    private final LemmaRepository lemmaRepository;
+
+    private final LemmaFinder lemmaFinder;
 
     public static ConcurrentSkipListSet<String> globalLinksSet = new ConcurrentSkipListSet<>();
 
@@ -96,7 +101,7 @@ public class IndexingServiceImpl implements IndexingService {
             }*/
             //TODO: wait for ForkJoinPool shutdown
             while (true) {
-                if (stopIndexing) {
+                if (stopIndexing) {//TODO: if forkjoin never been ran, stopIndexing always will be true
                     executor.shutdown(); //Executor shutdown completed, but one thread is working
                     threadList.clear();
                     return sendResponse(true, "");
@@ -130,11 +135,11 @@ public class IndexingServiceImpl implements IndexingService {
             site.setStatusTime(LocalDateTime.now());
             siteRepository.save(site);
             ForkJoinPool forkJoinPool = new ForkJoinPool();
-            Indexing indexing = new Indexing(link, site, siteRepository, pageRepository);
+            Indexing indexing = new Indexing(link, site, siteRepository, pageRepository, lemmaRepository, lemmaFinder);
             fjpList.add(indexing);
             ForkJoinTask<Void> task = forkJoinPool.submit(indexing);
             while (true) {
-                if (task.isCompletedAbnormally()) {
+                if (task.isCompletedAbnormally()) { //TODO: what is abnormally?
                     site.setUrl(link);
                     site.setStatus(Status.FAILED);
                     site.setLastError("Индексация остановлена пользователем");

@@ -50,10 +50,11 @@ public class ApiController {
         return ResponseEntity.ok(indexingService.stopIndexing());
     }
 
-//    @PostMapping("/indexPage")
-//    public ResponseEntity<ResponseMessage> indexPage() {
-//        return ResponseEntity.ok(indexingService.stopIndexing());
-//    }
+    @PostMapping("/indexPage")
+    public ResponseEntity<ResponseMessage> indexPage() {
+        siteRepository.deleteAll();
+        return ResponseEntity.ok(indexingService.stopIndexing());
+    }
 //
 //    @GetMapping("/search")
 //    public ResponseEntity<ResponseMessage> search() {

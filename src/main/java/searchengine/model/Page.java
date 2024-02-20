@@ -17,8 +17,8 @@ import java.util.List;
 public class Page {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private int id;
-    @ManyToOne(cascade = CascadeType.MERGE)
+    private Integer id;
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "site_id", referencedColumnName = "id", nullable = false)
     private Site site;
     @Column(columnDefinition = "TEXT NOT NULL, Index(path(512))")

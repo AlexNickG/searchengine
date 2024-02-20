@@ -105,8 +105,9 @@ public class Indexing extends RecursiveAction {
         page.setCode(document.connection().response().statusCode());
         page.setContent(document.text());
         pageRepository.save(page);
-        lemmaFinder.collectLemmas(page);
 
+        //site.setStatusTime(LocalDateTime.now());
+        //siteRepository.save(site);
 
 
         linksSet = document.select("a").stream()
@@ -132,8 +133,12 @@ public class Indexing extends RecursiveAction {
             taskList.add(parse);
         }
         ForkJoinTask.invokeAll(taskList);
+
+        lemmaFinder.collectLemmas(page);
+        lemmaFinder.saveIndex(page);
         System.out.println("Set size: " + IndexingServiceImpl.globalLinksSet.size());
         taskList.forEach(Indexing::join);
+
         //System.out.println("Indexing ended");
     }
 }

@@ -4,19 +4,21 @@ import lombok.RequiredArgsConstructor;
 import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import org.springframework.stereotype.Service;
+import searchengine.Repositories.IndexRepository;
 import searchengine.Repositories.LemmaRepository;
+import searchengine.model.Index;
 import searchengine.model.Lemma;
 import searchengine.model.Page;
+import searchengine.model.Site;
 
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
+
 @Service
 @RequiredArgsConstructor
 public class LemmaFinder { //нужно ли создавать экземпляр класса? или использовать статические методы?
     private final LemmaRepository lemmaRepository;
+    private final IndexRepository indexRepository;
     //private final Page page;
     private LuceneMorphology luceneMorph;
 
@@ -30,7 +32,7 @@ public class LemmaFinder { //нужно ли создавать экземпля
 
     ;
 
-       public void collectLemmas(Page page) {
+    public void collectLemmas(Page page) {
         HashMap<String, Integer> lemmas = new HashMap<>();
         String[] words = getText(page).toLowerCase(Locale.ROOT).replaceAll("[^а-я\\s]", " ").trim().split("\\s+"); //TODO: optimize it
 
@@ -48,26 +50,53 @@ public class LemmaFinder { //нужно ли создавать экземпля
             }
         }
         //lemmas.forEach((k, v) -> System.out.println(k + " - " + v));
-           for (Map.Entry<String, Integer> entry : lemmas.entrySet()) {
-               String key = entry.getKey();
-               Integer value = entry.getValue();
-               saveLemmas(key, value, page);
-           }
-           //lemmas.forEach(LemmaFinder::saveLemmas); //why it isn't work?
-           //return lemmas;
+        saveLemmas(lemmas, page);
+        //lemmas.forEach(LemmaFinder::saveLemmas); //why it isn't work?
+        //return lemmas;
 
     }
+
     public String getLemma(String word) {
         return luceneMorph.getNormalForms(word).get(0);
     }
 
-    public void saveLemmas(String lemma, Integer frequency, Page page) {
+    public void saveLemmas(HashMap<String, Integer> lemmas, Page page) {
+        List<Lemma> lemmaList = new ArrayList<>();
+        Set<Index> indexSet = new HashSet<>();
         Lemma lemmaEntity = new Lemma();
-        lemmaEntity.setLemma(lemma);
-        lemmaEntity.setSite(page.getSite());
-        lemmaEntity.setFrequency(frequency);
-        lemmaRepository.save(lemmaEntity);
+        Index indexEntity = new Index();
+        for (Map.Entry<String, Integer> entry : lemmas.entrySet()) {
+            lemmaEntity.setLemma(entry.getKey());
+            lemmaEntity.setFrequency(entry.getValue());
+            lemmaEntity.setSite(page.getSite());
+            synchronized (lemmaRepository) {
+                lemmaRepository.save(lemmaEntity);
+            }
+            //lemmaEntity.setPages();
+            //lemmaList.add(lemmaEntity);
+            indexEntity.setLemmaId(lemmaEntity.getId());
+            indexEntity.setPageId(page.getId());
+            indexEntity.setRank(lemmaEntity.getFrequency());
+            //indexEntity.setPageId(page.getId());
+            indexSet.add(indexEntity);
+
+
+        }
+        indexRepository.saveAll(indexSet);
+        /*synchronized (lemmaRepository) {
+            lemmaRepository.saveAll(lemmaList);
+        }
+
+        synchronized (indexRepository) {
+            indexRepository.saveAll(indexList);
+        }*/
     }
+
+    public void saveIndex(Page page) {
+
+
+    }
+
     private String getText(Page page) {
         return page.getContent();
     }

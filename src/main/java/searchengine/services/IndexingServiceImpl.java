@@ -71,7 +71,7 @@ public class IndexingServiceImpl implements IndexingService {
             globalLinksSet.clear();
             stop = false;
             stopIndexing = false;
-            pageRepository.deleteAll();
+            //pageRepository.deleteAll();
             siteRepository.deleteAll();
             executor = Executors.newFixedThreadPool(sites.getSites().size());
             for (int i = 0; i < sites.getSites().size(); i++) {
@@ -101,7 +101,7 @@ public class IndexingServiceImpl implements IndexingService {
             }*/
             //TODO: wait for ForkJoinPool shutdown
             while (true) {
-                if (stopIndexing) {//TODO: if forkjoin never been ran, stopIndexing always will be true
+                if (stopIndexing) {//TODO: if forkjoin never been ran, stopIndexing always will be false
                     executor.shutdown(); //Executor shutdown completed, but one thread is working
                     threadList.clear();
                     return sendResponse(true, "");

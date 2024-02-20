@@ -20,6 +20,7 @@ public class Site {
     private int id;
     //@Column(columnDefinition = "ENUM('INDEXING', 'INDEXED', 'FAILED') NOT NULL")
     @Enumerated(EnumType.STRING)
+    @Column(columnDefinition = "enum NOT NULL")
     private Status status;
     @Column(name = "status_time", columnDefinition = "DATETIME NOT NULL")
     private LocalDateTime statusTime;
@@ -32,6 +33,6 @@ public class Site {
     @OneToMany(mappedBy = "site", cascade = CascadeType.ALL)
     private List<Page> pageList = new ArrayList<>();
     @OneToMany(mappedBy = "site", cascade = CascadeType.ALL)
-    private List<Lemma> lemmaList = new ArrayList<>();
+    private List<Lemma> lemmaList = new ArrayList<>(); //предлагают убрать ссылку на lemma
 
 }

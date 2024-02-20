@@ -9,7 +9,6 @@ import searchengine.Repositories.LemmaRepository;
 import searchengine.model.Index;
 import searchengine.model.Lemma;
 import searchengine.model.Page;
-import searchengine.model.Site;
 
 import java.io.IOException;
 import java.util.*;
@@ -30,7 +29,6 @@ public class LemmaFinder { //нужно ли создавать экземпля
         }
     }
 
-    ;
 
     public void collectLemmas(Page page) {
         HashMap<String, Integer> lemmas = new HashMap<>();

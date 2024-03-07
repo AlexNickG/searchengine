@@ -39,8 +39,7 @@ public class StatisticsServiceImpl implements StatisticsService {
 
         List<DetailedStatisticsItem> detailed = new ArrayList<>();
         List<Site> sitesList = siteRepository.findAll();
-        for(int i = 0; i < sitesList.size(); i++) { //TODO: refactor to forEach
-            Site site = sitesList.get(i);
+        for (Site site : sitesList) { //TODO: refactor to forEach
             DetailedStatisticsItem item = new DetailedStatisticsItem();
             item.setName(site.getName());
             item.setUrl(site.getUrl());

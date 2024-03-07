@@ -18,9 +18,9 @@ public class Site {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
-    //@Column(columnDefinition = "ENUM('INDEXING', 'INDEXED', 'FAILED') NOT NULL")
+    //@Column(columnDefinition = "enum NOT NULL") // с этой записью таблица не создается
     @Enumerated(EnumType.STRING)
-    @Column(columnDefinition = "enum NOT NULL")
+    @Column(columnDefinition = "ENUM('INDEXING', 'INDEXED', 'FAILED') NOT NULL")
     private Status status;
     @Column(name = "status_time", columnDefinition = "DATETIME NOT NULL")
     private LocalDateTime statusTime;

@@ -30,57 +30,96 @@ public class LemmaFinder { //нужно ли создавать экземпля
     }
 
 
+    /*public void collectLemmas(Page page) {
+        HashSet<String> lemmasSet = new HashSet<>();
+        String[] words = getText(page).toLowerCase(Locale.ROOT).replaceAll("[^а-я\\s]", " ").trim().split("\\s+"); //TODO: optimize it
+
+        for (String word : words) {
+            List<String> wordBaseForms = luceneMorph.getMorphInfo(word);
+            if (wordBaseForms.stream().anyMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ"))) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
+            } else {
+                lemmasSet.add(getLemma(word));
+            }
+        }
+        saveLemmas(lemmasSet, page);
+    }*/
+
     public void collectLemmas(Page page) {
-        HashMap<String, Integer> lemmas = new HashMap<>();
+        HashMap<String, Integer> lemmasMap = new HashMap<>();
         String[] words = getText(page).toLowerCase(Locale.ROOT).replaceAll("[^а-я\\s]", " ").trim().split("\\s+"); //TODO: optimize it
 
         for (String word : words) {
             List<String> wordBaseForms = luceneMorph.getMorphInfo(word);
             //wordBaseForms.forEach(System.out::println);
-            if (wordBaseForms.stream().anyMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ"))) {//TODO: add to array and check in cycle
+            if (wordBaseForms.stream().anyMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ"))) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
             } else {
-                if (!lemmas.containsKey(getLemma(word))) {
-                    lemmas.put(getLemma(word), 1);
+                if (!lemmasMap.containsKey(getLemma(word))) {
+                    lemmasMap.put(getLemma(word), 1);
                 } else {
-                    lemmas.put(getLemma(word), lemmas.get(getLemma(word)) + 1);
+                    lemmasMap.put(getLemma(word), lemmasMap.get(getLemma(word)) + 1);
                 }
-
             }
         }
         //lemmas.forEach((k, v) -> System.out.println(k + " - " + v));
-        saveLemmas(lemmas, page);
+
         //lemmas.forEach(LemmaFinder::saveLemmas); //why it isn't work?
         //return lemmas;
-
+        saveLemmas(lemmasMap, page);
     }
 
-    public String getLemma(String word) {
-        return luceneMorph.getNormalForms(word).get(0);
-    }
 
-    public void saveLemmas(HashMap<String, Integer> lemmas, Page page) {
-        List<Lemma> lemmaList = new ArrayList<>();
-        Set<Index> indexSet = new HashSet<>();
-        Lemma lemmaEntity = new Lemma();
+
+
+public String getLemma(String word) {
+    return luceneMorph.getNormalForms(word).get(0);
+}
+
+public void saveLemmas(HashMap<String, Integer> lemmasMap, Page page) { //TODO: продумать сохранение лемм и индексов
+    System.out.println(Thread.currentThread());
+    System.out.println(page.getPath());
+    List<Lemma> lemmaList = new ArrayList<>();
+    Set<Index> indexSet = new HashSet<>();
+
+
+    for (Map.Entry<String, Integer> entry: lemmasMap.entrySet()) {
+
         Index indexEntity = new Index();
-        for (Map.Entry<String, Integer> entry : lemmas.entrySet()) {
-            lemmaEntity.setLemma(entry.getKey());
-            lemmaEntity.setFrequency(entry.getValue());
-            lemmaEntity.setSite(page.getSite());
-            synchronized (lemmaRepository) {
-                lemmaRepository.save(lemmaEntity);
-            }
-            //lemmaEntity.setPages();
-            //lemmaList.add(lemmaEntity);
-            indexEntity.setLemmaId(lemmaEntity.getId());
-            indexEntity.setPageId(page.getId());
-            indexEntity.setRank(lemmaEntity.getFrequency());
-            //indexEntity.setPageId(page.getId());
-            indexSet.add(indexEntity);
 
+        //System.out.println(entry.getKey());
+
+        Lemma dbLemma = lemmaRepository.findByLemma(entry.getKey());
+        if (dbLemma != null) {
+            dbLemma.setFrequency(dbLemma.getFrequency() + 1);
+            /*synchronized (lemmaRepository) {
+                lemmaRepository.save(dbLemma);
+            }*/
+            /*indexEntity.setLemmaId(dbLemma.getId());
+            indexEntity.setPageId(page.getId());
+            indexEntity.setRank(entry.getValue());*/
+        } else {
+            dbLemma = new Lemma();
+            dbLemma.setSite(page.getSite());
+            dbLemma.setLemma(entry.getKey());
+            dbLemma.setFrequency(1);
 
         }
-        indexRepository.saveAll(indexSet);
+        synchronized (lemmaRepository) {
+            lemmaRepository.save(dbLemma);
+        }
+        indexEntity.setLemmaId(dbLemma.getId());
+        indexEntity.setPageId(page.getId());
+        indexEntity.setRank(entry.getValue());
+
+        /* synchronized (lemmaRepository) {
+            lemmaRepository.save(lemmaEntity);
+        }*/
+        //lemmaEntity.setPages();
+        //lemmaList.add(lemmaEntity);
+
+        //indexEntity.setPageId(page.getId());
+        indexSet.add(indexEntity);
+    }
+    indexRepository.saveAll(indexSet);
         /*synchronized (lemmaRepository) {
             lemmaRepository.saveAll(lemmaList);
         }
@@ -88,14 +127,14 @@ public class LemmaFinder { //нужно ли создавать экземпля
         synchronized (indexRepository) {
             indexRepository.saveAll(indexList);
         }*/
-    }
+}
 
-    public void saveIndex(Page page) {
+public void saveIndex(Page page) {
 
 
-    }
+}
 
-    private String getText(Page page) {
-        return page.getContent();
-    }
+private String getText(Page page) {
+    return page.getContent();
+}
 }

@@ -49,8 +49,6 @@ public class IndexingServiceImpl implements IndexingService {
     public static volatile boolean stopIndexing = false;
     public static volatile boolean stop;
 
-    //private ForkJoinPool forkJoinPool = new ForkJoinPool();
-
     public List<Runnable> threadList = new ArrayList<>();
 
     public List<ForkJoinTask<Void>> fjpList = new ArrayList<>();
@@ -61,9 +59,9 @@ public class IndexingServiceImpl implements IndexingService {
 
         List<Site> indexingSites = siteRepository.findAll();
 
-        if (indexingSites.stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
-            return sendResponse(false, "Индексация уже запущена");
-        } else {
+//        if (indexingSites.stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
+//            return sendResponse(false, "Индексация уже запущена");
+//        } else {
             threadList.clear();
             if (executor != null) {
                 executor.shutdown();
@@ -71,7 +69,6 @@ public class IndexingServiceImpl implements IndexingService {
             globalLinksSet.clear();
             stop = false;
             stopIndexing = false;
-            //pageRepository.deleteAll();
             siteRepository.deleteAll();
             executor = Executors.newFixedThreadPool(sites.getSites().size());
             for (int i = 0; i < sites.getSites().size(); i++) {
@@ -82,7 +79,7 @@ public class IndexingServiceImpl implements IndexingService {
             System.out.println("Started threads: " + threadList.size());
             //
             return sendResponse(true, "");
-        }
+//        }
     }
 
     @Override
@@ -110,6 +107,14 @@ public class IndexingServiceImpl implements IndexingService {
         } else {
             return sendResponse(false, "Индексация не запущена");
         }
+    }
+
+    @Override
+    public ResponseMessage addPageForIndexing(String url) {
+        if (url.contains("000")) {
+            return sendResponse(false, "Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
+        }
+        return sendResponse(true, null);
     }
 
     public ResponseMessage sendResponse(boolean result, String message) {

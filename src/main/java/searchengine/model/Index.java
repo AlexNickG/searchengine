@@ -11,11 +11,11 @@ import javax.persistence.*;
 public class Index {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private int id;
+    private Integer id;
     @Column(name = "page_id", columnDefinition = "INT NOT NULL")
-    private int pageId;
+    private Integer pageId;
     @Column(name = "lemma_id", columnDefinition = "INT NOT NULL")
-    private int lemmaId;
+    private Integer lemmaId;
     @Column(name = "`rank`", columnDefinition = "FLOAT NOT NULL")
     private float rank;
 }

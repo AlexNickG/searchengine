@@ -13,4 +13,6 @@ public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
     @Transactional
     @Query(value = "TRUNCATE TABLE lemma", nativeQuery = true)
     void truncateTable();
+
+    Lemma findByLemma(String lemma);
 }

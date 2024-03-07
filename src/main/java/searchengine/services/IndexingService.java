@@ -5,6 +5,5 @@ import searchengine.dto.statistics.ResponseMessage;
 public interface IndexingService {
     ResponseMessage startIndexing();
     ResponseMessage stopIndexing();
-
-//    ResponseMessage addPageForIndexing();
+    ResponseMessage addPageForIndexing(String url);
 }

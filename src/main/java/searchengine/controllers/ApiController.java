@@ -1,7 +1,7 @@
 package searchengine.controllers;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import searchengine.Repositories.PageRepository;
@@ -9,16 +9,9 @@ import searchengine.Repositories.SiteRepository;
 import searchengine.dto.search.SearchResponse;
 import searchengine.dto.statistics.ResponseMessage;
 import searchengine.dto.statistics.StatisticsResponse;
-import searchengine.model.Site;
-import searchengine.model.Status;
 import searchengine.services.IndexingService;
 import searchengine.services.SearchService;
 import searchengine.services.StatisticsService;
-
-import javax.annotation.PreDestroy;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 
 @RequiredArgsConstructor
 @RestController
@@ -35,34 +28,37 @@ public class ApiController {
 
     @GetMapping("/statistics")
     public ResponseEntity<StatisticsResponse> statistics() {
-        return ResponseEntity.ok(statisticsService.getStatistics());
+        return new ResponseEntity<>(statisticsService.getStatistics(), HttpStatus.OK);
     }
 
     @GetMapping("/startIndexing")
     public ResponseEntity<ResponseMessage> startIndexing() {
-        return ResponseEntity.ok(indexingService.startIndexing());
+        return new ResponseEntity<>(indexingService.startIndexing(), HttpStatus.OK);
     }
 
     @GetMapping("/stopIndexing")
     public ResponseEntity<ResponseMessage> stopIndexing() {
-        return ResponseEntity.ok(indexingService.stopIndexing());
+        return new ResponseEntity<>(indexingService.stopIndexing(), HttpStatus.OK);
     }
 
     @PostMapping("/indexPage")
-    public ResponseEntity<ResponseMessage> indexPage() {
-        siteRepository.deleteAll();
-        return ResponseEntity.ok(indexingService.stopIndexing());
+    public ResponseEntity<ResponseMessage> indexPage(@RequestParam String url) {
+        if (url.contains("000")) {
+            return new ResponseEntity<>(indexingService.addPageForIndexing(url), HttpStatus.BAD_REQUEST);
+        }
+        //siteRepository.deleteAll();
+        return new ResponseEntity<>(indexingService.addPageForIndexing(url), HttpStatus.OK); //CREATED
     }
 
     @GetMapping("/search")
     public ResponseEntity<SearchResponse> search(@RequestParam String query, int offset, Integer limit, String site) {
-        return ResponseEntity.ok(searchService.getSearchResult(query, offset, limit, site));
+        if (query.isEmpty()) {
+            return new ResponseEntity<>(searchService.getSearchResult(query, offset, limit, site), HttpStatus.BAD_REQUEST);
+        }
+        return new ResponseEntity<>(searchService.getSearchResult(query, offset, limit, site), HttpStatus.OK);
     }
-//
-//    @GetMapping("/search")
-//    public ResponseEntity<ResponseMessage> search() {
-//        return ResponseEntity.ok();
-//    }
+
+
 
     /*@PreDestroy
     public void deleteTables() {

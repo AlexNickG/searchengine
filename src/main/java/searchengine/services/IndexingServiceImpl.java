@@ -3,6 +3,8 @@ package searchengine.services;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Service;
 import searchengine.Repositories.LemmaRepository;
@@ -10,9 +12,11 @@ import searchengine.Repositories.PageRepository;
 import searchengine.Repositories.SiteRepository;
 import searchengine.config.SitesList;
 import searchengine.dto.statistics.ResponseMessage;
+import searchengine.model.Page;
 import searchengine.model.Site;
 import searchengine.model.Status;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -110,10 +114,39 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     @Override
-    public ResponseMessage addPageForIndexing(String url) {
-        if (url.contains("000")) {
+    public ResponseMessage addPageForIndexing(String link) {
+        Document document;
+        int consequense = 0;
+        String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
+        for (Site site: sitesList) {
+            if (link.contains(site.getUrl())) {
+                consequense++;
+            }
+        }
+        if (consequense == 0) {
             return sendResponse(false, "Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
         }
+        try {
+//            Thread.sleep(950);
+//            response = Jsoup.connect(link).execute();
+            Thread.sleep(550);
+            document = Jsoup.connect(link).userAgent(userAgent).get();
+        } catch (IOException | InterruptedException e) {
+            System.out.println("Broken link: " + link);
+            return sendResponse(false, "Broken link");
+        }
+            /*response = Jsoup.connect(link)
+                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:25.0) Gecko/20100101 Firefox/25.0 Chrome/51.0.2704.106 Safari/537.36 OPR/38.0.2220.41")
+                    .referrer("google.com").timeout(1000).execute().bufferUp();
+            document = response.parse();*/
+
+        Page page = new Page();
+        page.setSite(site);
+        page.setPath(link);
+        page.setCode(document.connection().response().statusCode());
+        page.setContent(document.text());
+        pageRepository.save(page);
+        lemmaFinder.collectLemmas(page);
         return sendResponse(true, null);
     }
 
@@ -144,7 +177,7 @@ public class IndexingServiceImpl implements IndexingService {
             fjpList.add(indexing);
             ForkJoinTask<Void> task = forkJoinPool.submit(indexing);
             while (true) {
-                if (task.isCompletedAbnormally()) { //TODO: what is abnormally?
+                if (task.isCancelled()) { //TODO: what is abnormally?
                     site.setUrl(link);
                     site.setStatus(Status.FAILED);
                     site.setLastError("Индексация остановлена пользователем");
@@ -157,6 +190,8 @@ public class IndexingServiceImpl implements IndexingService {
                     break;
                 }
                 if (task.isCompletedNormally()) {
+                    List<Page> pageList = pageRepository.findAll();
+                    pageList.forEach(lemmaFinder::collectLemmas);
                     site.setUrl(link);
                     site.setStatus(Status.INDEXED);
                     site.setName(sites.getSites().get(siteNumber).getName());

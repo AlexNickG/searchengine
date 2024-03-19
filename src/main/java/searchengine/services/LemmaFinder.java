@@ -3,6 +3,7 @@ package searchengine.services;
 import lombok.RequiredArgsConstructor;
 import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
+import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Service;
 import searchengine.Repositories.IndexRepository;
 import searchengine.Repositories.LemmaRepository;
@@ -12,8 +13,8 @@ import searchengine.model.Page;
 
 import java.io.IOException;
 import java.util.*;
-
 @Service
+//@Scope("prototype")
 @RequiredArgsConstructor
 public class LemmaFinder { //нужно ли создавать экземпляр класса? или использовать статические методы?
     private final LemmaRepository lemmaRepository;
@@ -75,8 +76,8 @@ public String getLemma(String word) {
 }
 
 public void saveLemmas(HashMap<String, Integer> lemmasMap, Page page) { //TODO: продумать сохранение лемм и индексов
-    System.out.println(Thread.currentThread());
-    System.out.println(page.getPath());
+    //System.out.println(Thread.currentThread());
+    //System.out.println(page.getPath());
     List<Lemma> lemmaList = new ArrayList<>();
     Set<Index> indexSet = new HashSet<>();
 
@@ -103,9 +104,9 @@ public void saveLemmas(HashMap<String, Integer> lemmasMap, Page page) { //TODO: 
             dbLemma.setFrequency(1);
 
         }
-        synchronized (lemmaRepository) {
-            lemmaRepository.save(dbLemma);
-        }
+        //synchronized (lemmaRepository) {
+            lemmaRepository.saveAndFlush(dbLemma);
+        //}
         indexEntity.setLemmaId(dbLemma.getId());
         indexEntity.setPageId(page.getId());
         indexEntity.setRank(entry.getValue());
@@ -119,7 +120,7 @@ public void saveLemmas(HashMap<String, Integer> lemmasMap, Page page) { //TODO: 
         //indexEntity.setPageId(page.getId());
         indexSet.add(indexEntity);
     }
-    indexRepository.saveAll(indexSet);
+    indexRepository.saveAllAndFlush(indexSet);
         /*synchronized (lemmaRepository) {
             lemmaRepository.saveAll(lemmaList);
         }

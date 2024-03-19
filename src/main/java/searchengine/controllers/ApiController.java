@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import searchengine.Repositories.IndexRepository;
+import searchengine.Repositories.LemmaRepository;
 import searchengine.Repositories.PageRepository;
 import searchengine.Repositories.SiteRepository;
 import searchengine.dto.search.SearchResponse;
@@ -18,13 +20,12 @@ import searchengine.services.StatisticsService;
 @RequestMapping("/api")
 public class ApiController {
     private final StatisticsService statisticsService;
-
     private final IndexingService indexingService;
-
     private final SearchService searchService;
-    private SiteRepository siteRepository;
-    private PageRepository pageRepository;
-
+    private final SiteRepository siteRepository;
+    private final IndexRepository indexRepository;
+    private final LemmaRepository lemmaRepository;
+    private final PageRepository pageRepository;
 
     @GetMapping("/statistics")
     public ResponseEntity<StatisticsResponse> statistics() {
@@ -46,8 +47,17 @@ public class ApiController {
         if (url.contains("000")) {
             return new ResponseEntity<>(indexingService.addPageForIndexing(url), HttpStatus.BAD_REQUEST);
         }
-        //siteRepository.deleteAll();
         return new ResponseEntity<>(indexingService.addPageForIndexing(url), HttpStatus.OK); //CREATED
+    }
+
+    @PostMapping("/deleteAll")
+    public ResponseEntity<ResponseMessage> deleteAll() throws InterruptedException {
+
+        indexRepository.deleteAll();
+        lemmaRepository.deleteAll();
+        pageRepository.deleteAll();
+        siteRepository.deleteAll();
+        return new ResponseEntity<>(indexingService.stopIndexing(), HttpStatus.OK);
     }
 
     @GetMapping("/search")
@@ -57,14 +67,4 @@ public class ApiController {
         }
         return new ResponseEntity<>(searchService.getSearchResult(query, offset, limit, site), HttpStatus.OK);
     }
-
-
-
-    /*@PreDestroy
-    public void deleteTables() {
-        System.out.println("deleting tables");
-        pageRepository.deleteAll();
-        siteRepository.deleteAll();
-
-    }*/
 }

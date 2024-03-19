@@ -133,9 +133,9 @@ public class Indexing extends RecursiveAction {
             taskList.add(parse);
         }
         ForkJoinTask.invokeAll(taskList);
-
-        lemmaFinder.collectLemmas(page);
-        lemmaFinder.saveIndex(page);
+//LemmaFinder lemmaFinder = new LemmaFinder(lemmaRepository, );
+        //lemmaFinder.collectLemmas(page);
+        //lemmaFinder.saveIndex(page);
         System.out.println("Set size: " + IndexingServiceImpl.globalLinksSet.size());
         taskList.forEach(Indexing::join);
 

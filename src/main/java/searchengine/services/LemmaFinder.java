@@ -28,6 +28,7 @@ public class LemmaFinder { //нужно ли создавать экземпля
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+        System.out.println("Tread name: " + Thread.currentThread().getName());
     }
 
 

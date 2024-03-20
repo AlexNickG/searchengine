@@ -118,14 +118,14 @@ public class IndexingServiceImpl implements IndexingService {
         Document document;
         int consequense = 0;
         String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
-        for (Site site: sitesList) {
+        for (searchengine.config.Site site: sites.getSites()) {
             if (link.contains(site.getUrl())) {
                 consequense++;
             }
         }
-        if (consequense == 0) {
-            return sendResponse(false, "Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
-        }
+//        if (consequense == 0) {
+//            return sendResponse(false, "Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
+//        }
         try {
 //            Thread.sleep(950);
 //            response = Jsoup.connect(link).execute();
@@ -139,9 +139,17 @@ public class IndexingServiceImpl implements IndexingService {
                     .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:25.0) Gecko/20100101 Firefox/25.0 Chrome/51.0.2704.106 Safari/537.36 OPR/38.0.2220.41")
                     .referrer("google.com").timeout(1000).execute().bufferUp();
             document = response.parse();*/
+        Page page = pageRepository.findByPath(link);
+        if (page == null) {
+            page = new Page();
+            site.setName("Test");
+            site.setUrl("http://test.ru");
+            site.setStatus(Status.INDEXED);
+            site.setStatusTime(LocalDateTime.now());
+            siteRepository.saveAndFlush(site);
+            page.setSite(site);
+        }
 
-        Page page = new Page();
-        page.setSite(site);
         page.setPath(link);
         page.setCode(document.connection().response().statusCode());
         page.setContent(document.text());

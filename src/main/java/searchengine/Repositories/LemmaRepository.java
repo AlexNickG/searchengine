@@ -9,10 +9,10 @@ import searchengine.model.Lemma;
 
 @Repository
 public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
-    @Modifying
     @Transactional
-    @Query(value = "TRUNCATE TABLE lemma", nativeQuery = true)
-    void truncateTable();
+    @Modifying
+    @Query(value = "delete from search_engine.site", nativeQuery = true)
+    void deleteLemmas();
 
     Lemma findByLemma(String lemma);
 }

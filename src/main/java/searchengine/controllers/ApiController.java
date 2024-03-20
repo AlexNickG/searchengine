@@ -50,14 +50,20 @@ public class ApiController {
         return new ResponseEntity<>(indexingService.addPageForIndexing(url), HttpStatus.OK); //CREATED
     }
 
-    @PostMapping("/deleteAll")
-    public ResponseEntity<ResponseMessage> deleteAll() throws InterruptedException {
-
-        indexRepository.deleteAll();
+    @DeleteMapping("/deleteAll")
+    public void deleteAll() throws InterruptedException {
+        siteRepository.setForeignKeyCheckNull();
+        indexRepository.deleteIndex();
+        lemmaRepository.deleteLemmas();
+        pageRepository.deletePages();
+        siteRepository.deleteAllSites();
+        siteRepository.setForeignKeyCheckNotNull();
+        /*indexRepository.deleteAll();
         lemmaRepository.deleteAll();
-        pageRepository.deleteAll();
-        siteRepository.deleteAll();
-        return new ResponseEntity<>(indexingService.stopIndexing(), HttpStatus.OK);
+        pageRepository.deleteAll();*/
+        //siteRepository.deleteAll();
+        //return new ResponseEntity<>(indexingService.stopIndexing(), HttpStatus.OK);
+        System.out.println("DB cleared");
     }
 
     @GetMapping("/search")

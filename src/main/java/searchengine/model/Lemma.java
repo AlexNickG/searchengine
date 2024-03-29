@@ -15,6 +15,7 @@ public class Lemma {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
+    //    @ManyToOne(fetch = FetchType.LAZY)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "site_id", referencedColumnName = "id", nullable = false)
     private Site site;
@@ -22,6 +23,21 @@ public class Lemma {
     private String lemma;
     @Column(columnDefinition = "INT NOT NULL")
     private int frequency;
+    //
+    /*@ManyToMany(cascade = CascadeType.ALL)
+    @JoinTable(name = "index",
+            joinColumns = {@JoinColumn(name = "lemma_id")},
+            inverseJoinColumns = {@JoinColumn(name = "page_id")})*/
     @ManyToMany(mappedBy = "lemmas", cascade = CascadeType.ALL)
-    private List<Page> pages;
+    private List<Page> pages; //do we really need this field?
+
+    @Override
+    public String toString() {
+        return "Lemma{" +
+                "id=" + id +
+                /*", site=" + site +*/
+                ", lemma='" + lemma + '\'' +
+                ", frequency=" + frequency +
+                '}';
+    }
 }

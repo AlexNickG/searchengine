@@ -6,13 +6,20 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.model.Lemma;
+import searchengine.model.Page;
+
+import java.util.List;
 
 @Repository
 public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
     @Transactional
     @Modifying
-    @Query(value = "delete from search_engine.site", nativeQuery = true)
+    @Query(value = "delete from search_engine.lemma", nativeQuery = true)
     void deleteLemmas();
+    //@Transactional
+    //@Query(value = "select * from search_engine.lemma where lemma like ?1", nativeQuery = true)
+    List<Lemma> findByLemma(String lemma); //two sites may have the same lemma
 
-    Lemma findByLemma(String lemma);
+    Lemma findByLemmaAndSite_Id(String lemma, int siteId);
+    //List<Page> findByLemma(String lemma);
 }

@@ -69,7 +69,10 @@ public class ApiController {
     @GetMapping("/search")
     public ResponseEntity<SearchResponse> search(@RequestParam String query, int offset, Integer limit, String site) {
         if (query.isEmpty()) {
-            return new ResponseEntity<>(searchService.getSearchResult(query, offset, limit, site), HttpStatus.BAD_REQUEST);
+            SearchResponse searchResponse = new SearchResponse();
+            searchResponse.setResult(false);
+            searchResponse.setError("Задан пустой поисковый запрос");
+            return new ResponseEntity<>(searchResponse, HttpStatus.BAD_REQUEST);
         }
         return new ResponseEntity<>(searchService.getSearchResult(query, offset, limit, site), HttpStatus.OK);
     }

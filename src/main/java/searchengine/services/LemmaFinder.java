@@ -3,16 +3,22 @@ package searchengine.services;
 import lombok.RequiredArgsConstructor;
 import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
+
+import org.springframework.cglib.proxy.MethodProxy;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Service;
 import searchengine.Repositories.IndexRepository;
 import searchengine.Repositories.LemmaRepository;
+import searchengine.Repositories.PageRepository;
 import searchengine.model.Index;
 import searchengine.model.Lemma;
 import searchengine.model.Page;
 
+import javax.sql.DataSource;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.util.*;
+
 @Service
 //@Scope("prototype")
 @RequiredArgsConstructor
@@ -21,6 +27,7 @@ public class LemmaFinder { //нужно ли создавать экземпля
     private final IndexRepository indexRepository;
     //private final Page page;
     private LuceneMorphology luceneMorph;
+    private final PageRepository pageRepository;
 
     {
         try {
@@ -46,14 +53,15 @@ public class LemmaFinder { //нужно ли создавать экземпля
         saveLemmas(lemmasSet, page);
     }*/
 
-    public void collectLemmas(Page page) {
+    public void collectLemmas(int pageId) {
         HashMap<String, Integer> lemmasMap = new HashMap<>();
+        Page page = pageRepository.findById(pageId).orElseThrow();
         String[] words = getText(page).toLowerCase(Locale.ROOT).replaceAll("[^а-я\\s]", " ").trim().split("\\s+"); //TODO: optimize it
 
         for (String word : words) {
             List<String> wordBaseForms = luceneMorph.getMorphInfo(word);
             //wordBaseForms.forEach(System.out::println);
-            if (wordBaseForms.stream().anyMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ"))) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
+            if (wordBaseForms.stream().anyMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ") || w.length() < 3)) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
             } else {
                 if (!lemmasMap.containsKey(getLemma(word))) {
                     lemmasMap.put(getLemma(word), 1);
@@ -70,58 +78,58 @@ public class LemmaFinder { //нужно ли создавать экземпля
     }
 
 
+    public String getLemma(String word) {
+        return luceneMorph.getNormalForms(word).get(0);
+    }
+
+    public void saveLemmas(HashMap<String, Integer> lemmasMap, Page page) { //TODO: продумать сохранение лемм и индексов
+
+        //System.out.println(Thread.currentThread());
+        //System.out.println(page.getPath());
+        List<Lemma> lemmaList = new ArrayList<>();
+        Set<Index> indexSet = new HashSet<>();
 
 
-public String getLemma(String word) {
-    return luceneMorph.getNormalForms(word).get(0);
-}
+        for (Map.Entry<String, Integer> entry : lemmasMap.entrySet()) {
 
-public void saveLemmas(HashMap<String, Integer> lemmasMap, Page page) { //TODO: продумать сохранение лемм и индексов
-    //System.out.println(Thread.currentThread());
-    //System.out.println(page.getPath());
-    List<Lemma> lemmaList = new ArrayList<>();
-    Set<Index> indexSet = new HashSet<>();
+            Index indexEntity = new Index();
 
+            //System.out.println(entry.getKey());
 
-    for (Map.Entry<String, Integer> entry: lemmasMap.entrySet()) {
-
-        Index indexEntity = new Index();
-
-        //System.out.println(entry.getKey());
-
-        Lemma dbLemma = lemmaRepository.findByLemma(entry.getKey());
-        if (dbLemma != null) {
-            dbLemma.setFrequency(dbLemma.getFrequency() + 1);
+            Lemma dbLemma = lemmaRepository.findByLemmaAndSite_Id(entry.getKey(), page.getSite().getId());
+            if (dbLemma != null) {
+                dbLemma.setFrequency(dbLemma.getFrequency() + 1);
             /*synchronized (lemmaRepository) {
                 lemmaRepository.save(dbLemma);
             }*/
             /*indexEntity.setLemmaId(dbLemma.getId());
             indexEntity.setPageId(page.getId());
             indexEntity.setRank(entry.getValue());*/
-        } else {
-            dbLemma = new Lemma();
-            dbLemma.setSite(page.getSite());
-            dbLemma.setLemma(entry.getKey());
-            dbLemma.setFrequency(1);
+            } else {
+                dbLemma = new Lemma();
+                dbLemma.setSite(page.getSite());
+                dbLemma.setLemma(entry.getKey());
+                dbLemma.setFrequency(1);
 
-        }
-        //synchronized (lemmaRepository) {
-            lemmaRepository.saveAndFlush(dbLemma);
-        //}
-        indexEntity.setLemmaId(dbLemma.getId());
-        indexEntity.setPageId(page.getId());
-        indexEntity.setRank(entry.getValue());
+            }
+            //synchronized (lemmaRepository) {
+            int lemmaId = lemmaRepository.save(dbLemma).getId();
+            //}
+            //indexEntity.setLemmaId(dbLemma.getId());
+            indexEntity.setLemmaId(lemmaId);
+            indexEntity.setPageId(page.getId());
+            indexEntity.setRank(entry.getValue());
 
         /* synchronized (lemmaRepository) {
             lemmaRepository.save(lemmaEntity);
         }*/
-        //lemmaEntity.setPages();
-        //lemmaList.add(lemmaEntity);
+            //lemmaEntity.setPages();
+            //lemmaList.add(lemmaEntity);
 
-        //indexEntity.setPageId(page.getId());
-        indexSet.add(indexEntity);
-    }
-    indexRepository.saveAllAndFlush(indexSet);
+            //indexEntity.setPageId(page.getId());
+            indexSet.add(indexEntity);
+        }
+        indexRepository.saveAllAndFlush(indexSet);
         /*synchronized (lemmaRepository) {
             lemmaRepository.saveAll(lemmaList);
         }
@@ -129,14 +137,15 @@ public void saveLemmas(HashMap<String, Integer> lemmasMap, Page page) { //TODO: 
         synchronized (indexRepository) {
             indexRepository.saveAll(indexList);
         }*/
-}
+    }
 
-public void saveIndex(Page page) {
+    public void saveIndex(Page page) {
 
 
-}
+    }
 
-private String getText(Page page) {
-    return page.getContent();
-}
+    private String getText(Page page) {
+        return page.getContent();
+    }
+
 }

@@ -6,6 +6,7 @@ import lombok.SneakyThrows;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -19,6 +20,7 @@ import searchengine.model.Status;
 
 import javax.annotation.PreDestroy;
 import java.io.IOException;
+import java.net.URL;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -72,7 +74,7 @@ public class Indexing extends RecursiveAction {
         return super.cancel(true);
     }
 
-    //@SneakyThrows
+    @SneakyThrows
     @Override
     protected void compute() {
 
@@ -81,38 +83,34 @@ public class Indexing extends RecursiveAction {
         }
 
         Set<String> linksSet;
-
-        Connection.Response response;
+        int statusCode;
+        //String refLink;
+        Connection connection;
         Document document;
 
-        try {
-//            Thread.sleep(950);
-//            response = Jsoup.connect(link).execute();
-            Thread.sleep(550);
-            document = Jsoup.connect(link).userAgent(userAgent).get();
-        } catch (IOException | InterruptedException e) {
-            System.out.println("Broken link: " + link);
-            return;
-        }
-            /*response = Jsoup.connect(link)
-                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:25.0) Gecko/20100101 Firefox/25.0 Chrome/51.0.2704.106 Safari/537.36 OPR/38.0.2220.41")
-                    .referrer("google.com").timeout(1000).execute().bufferUp();
-            document = response.parse();*/
 
+            connection = Jsoup.connect(link).ignoreHttpErrors(true);
+            Thread.sleep(550);
+            document = connection.userAgent(userAgent).get();
+
+        statusCode = connection.response().statusCode();
+
+        //refLink = document.select("a").first().attr("href");
+        URL refLink = new URL(link);
         Page page = new Page();
         page.setSite(site);
-        page.setPath(link);
-        page.setCode(document.connection().response().statusCode());
-        page.setContent(document.text());
-        pageRepository.save(page);
-
-        //site.setStatusTime(LocalDateTime.now());
-        //siteRepository.save(site);
+        page.setPath(refLink.getPath());
+        page.setCode(statusCode);
+        page.setContent(document.toString());
+        int pageId = pageRepository.save(page).getId();
+        //lemmaFinder.collectLemmas(pageId);
+        site.setStatusTime(LocalDateTime.now());
+        siteRepository.save(site);
 
 
         linksSet = document.select("a").stream()
                 .map(e -> e.attr("abs:href"))
-                .filter(e -> e.startsWith(site.getUrl())
+                .filter(e -> e.contains(site.getUrl())
                         && !e.contains("#") //TODO: add to config
                         && !e.endsWith(".jpg")
                         && !e.endsWith(".pdf")
@@ -133,8 +131,7 @@ public class Indexing extends RecursiveAction {
             taskList.add(parse);
         }
         ForkJoinTask.invokeAll(taskList);
-//LemmaFinder lemmaFinder = new LemmaFinder(lemmaRepository, );
-        //lemmaFinder.collectLemmas(page);
+
         //lemmaFinder.saveIndex(page);
         System.out.println("Set size: " + IndexingServiceImpl.globalLinksSet.size());
         taskList.forEach(Indexing::join);

@@ -7,6 +7,7 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Service;
+import searchengine.Repositories.IndexRepository;
 import searchengine.Repositories.LemmaRepository;
 import searchengine.Repositories.PageRepository;
 import searchengine.Repositories.SiteRepository;
@@ -29,32 +30,20 @@ import java.util.concurrent.*;
 @RequiredArgsConstructor
 @ConfigurationProperties(prefix = "connection-settings")
 public class IndexingServiceImpl implements IndexingService {
-
     private int cores = Runtime.getRuntime().availableProcessors();
-
     private ExecutorService executor;
-
     private final SitesList sites;
-
     private Site site = new Site();
-
     private List<Site> sitesList = new ArrayList<>();
-
     private final SiteRepository siteRepository;
-
     private final PageRepository pageRepository;
-
     private final LemmaRepository lemmaRepository;
-
+    private final IndexRepository indexRepository;
     private final LemmaFinder lemmaFinder;
-
     public static ConcurrentSkipListSet<String> globalLinksSet = new ConcurrentSkipListSet<>();
-
     public static volatile boolean stopIndexing = false;
     public static volatile boolean stop;
-
     public List<Runnable> threadList = new ArrayList<>();
-
     public List<ForkJoinTask<Void>> fjpList = new ArrayList<>();
 
     @Override
@@ -66,23 +55,29 @@ public class IndexingServiceImpl implements IndexingService {
 //        if (indexingSites.stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
 //            return sendResponse(false, "Индексация уже запущена");
 //        } else {
-            threadList.clear();
-            if (executor != null) {
-                executor.shutdown();
-            }
-            globalLinksSet.clear();
-            stop = false;
-            stopIndexing = false;
-            siteRepository.deleteAll();
-            executor = Executors.newFixedThreadPool(sites.getSites().size());
-            for (int i = 0; i < sites.getSites().size(); i++) {
-                threadList.add(new StartIndexing(i)); //How to start threads in ExecutorService?
-            }
+        threadList.clear();
+        if (executor != null) {
+            executor.shutdown();
+        }
+        globalLinksSet.clear();
+        stop = false;
+        stopIndexing = false;
+        siteRepository.setForeignKeyCheckNull();
+        indexRepository.deleteIndex();
+        lemmaRepository.deleteLemmas();
+        pageRepository.deletePages();
+        siteRepository.deleteAllSites();
+        siteRepository.setForeignKeyCheckNotNull();
+        //siteRepository.deleteAll();
+        executor = Executors.newFixedThreadPool(sites.getSites().size());
+        for (int i = 0; i < sites.getSites().size(); i++) {
+            threadList.add(new StartIndexing(i)); //How to start threads in ExecutorService?
+        }
 
-            threadList.forEach(executor::execute);
-            System.out.println("Started threads: " + threadList.size());
-            //
-            return sendResponse(true, "");
+        threadList.forEach(executor::execute);
+        System.out.println("Started threads: " + threadList.size());
+        //
+        return sendResponse(true, "");
 //        }
     }
 
@@ -118,7 +113,7 @@ public class IndexingServiceImpl implements IndexingService {
         Document document;
         int consequense = 0;
         String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
-        for (searchengine.config.Site site: sites.getSites()) {
+        for (searchengine.config.Site site : sites.getSites()) {
             if (link.contains(site.getUrl())) {
                 consequense++;
             }
@@ -153,8 +148,8 @@ public class IndexingServiceImpl implements IndexingService {
         page.setPath(link);
         page.setCode(document.connection().response().statusCode());
         page.setContent(document.text());
-        pageRepository.save(page);
-        lemmaFinder.collectLemmas(page);
+        int pageId = pageRepository.save(page).getId();
+        lemmaFinder.collectLemmas(pageId);
         return sendResponse(true, null);
     }
 
@@ -198,8 +193,8 @@ public class IndexingServiceImpl implements IndexingService {
                     break;
                 }
                 if (task.isCompletedNormally()) {
-                    List<Page> pageList = pageRepository.findAll();
-                    pageList.forEach(lemmaFinder::collectLemmas);
+                    //List<Page> pageList = pageRepository.findAll();
+                    //pageList.forEach(lemmaFinder::collectLemmas);
                     site.setUrl(link);
                     site.setStatus(Status.INDEXED);
                     site.setName(sites.getSites().get(siteNumber).getName());

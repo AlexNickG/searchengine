@@ -8,6 +8,7 @@ import searchengine.Repositories.IndexRepository;
 import searchengine.Repositories.LemmaRepository;
 import searchengine.Repositories.PageRepository;
 import searchengine.Repositories.SiteRepository;
+import searchengine.config.Config;
 import searchengine.dto.search.SearchResponse;
 import searchengine.dto.statistics.ResponseMessage;
 import searchengine.dto.statistics.StatisticsResponse;
@@ -26,6 +27,7 @@ public class ApiController {
     private final IndexRepository indexRepository;
     private final LemmaRepository lemmaRepository;
     private final PageRepository pageRepository;
+    private final Config config;
 
     @GetMapping("/statistics")
     public ResponseEntity<StatisticsResponse> statistics() {
@@ -52,6 +54,7 @@ public class ApiController {
 
     @DeleteMapping("/deleteAll")
     public void deleteAll() throws InterruptedException {
+        System.out.println(config.getUserAgent());
         siteRepository.setForeignKeyCheckNull();
         indexRepository.deleteIndex();
         lemmaRepository.deleteLemmas();

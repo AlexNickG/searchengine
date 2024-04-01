@@ -20,6 +20,6 @@ public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
     //@Query(value = "select * from search_engine.lemma where lemma like ?1", nativeQuery = true)
     List<Lemma> findByLemma(String lemma); //two sites may have the same lemma
 
-    Lemma findByLemmaAndSite_Id(String lemma, int siteId);
+    List<Lemma> findByLemmaAndSite_Id(String lemma, int siteId);
     //List<Page> findByLemma(String lemma);
 }

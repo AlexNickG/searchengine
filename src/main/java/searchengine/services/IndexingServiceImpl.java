@@ -18,6 +18,7 @@ import searchengine.model.Site;
 import searchengine.model.Status;
 
 import java.io.IOException;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -148,8 +149,12 @@ public class IndexingServiceImpl implements IndexingService {
         page.setPath(link);
         page.setCode(document.connection().response().statusCode());
         page.setContent(document.text());
-        int pageId = pageRepository.save(page).getId();
-        lemmaFinder.collectLemmas(pageId);
+        int pageId = pageRepository.saveAndFlush(page).getId();
+        try {
+            lemmaFinder.collectLemmas(pageId);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
         return sendResponse(true, null);
     }
 
@@ -174,22 +179,29 @@ public class IndexingServiceImpl implements IndexingService {
             site.setStatus(Status.INDEXING);
             site.setName(sites.getSites().get(siteNumber).getName());
             site.setStatusTime(LocalDateTime.now());
-            siteRepository.save(site);
+            siteRepository.saveAndFlush(site);
             ForkJoinPool forkJoinPool = new ForkJoinPool();
+            globalLinksSet.add(link);
             Indexing indexing = new Indexing(link, site, siteRepository, pageRepository, lemmaRepository, lemmaFinder);
             fjpList.add(indexing);
             ForkJoinTask<Void> task = forkJoinPool.submit(indexing);
+
             while (true) {
-                if (task.isCancelled()) { //TODO: what is abnormally?
+                if (forkJoinPool.isTerminating()){
+                    System.out.println("FJP is terminating");
+                }
+                if (task.isCompletedAbnormally()) { //TODO: what is abnormally?
+                    System.out.println("isTerminating: " + forkJoinPool.isTerminating());
+                    task.getException().printStackTrace();
                     site.setUrl(link);
                     site.setStatus(Status.FAILED);
                     site.setLastError("Индексация остановлена пользователем");
                     site.setName(sites.getSites().get(siteNumber).getName());
                     site.setStatusTime(LocalDateTime.now());
-                    siteRepository.save(site); //save vs saveAndFlush
+                    siteRepository.saveAndFlush(site); //save vs saveAndFlush
                     forkJoinPool.shutdown();
                     System.out.println("the task was cancelled");
-                    stopIndexing = true;
+                    //stopIndexing = true;//it stops all threads
                     break;
                 }
                 if (task.isCompletedNormally()) {
@@ -202,7 +214,7 @@ public class IndexingServiceImpl implements IndexingService {
                     siteRepository.save(site);
                     forkJoinPool.shutdown();
                     System.out.println("The task was done");
-                    stopIndexing = true;
+                    //stopIndexing = true;
                     break;
                 }
             }

@@ -31,6 +31,8 @@ import java.util.stream.Collectors;
 
 //@Component
 @Getter
+@Setter
+@ConfigurationProperties(prefix = "connection-settings")
 public class Indexing extends RecursiveAction {
     private PageRepository pageRepository;
     private SiteRepository siteRepository;
@@ -40,13 +42,7 @@ public class Indexing extends RecursiveAction {
     final private String link;
     //@Value("${connection-settings.userAgent}")
     private String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
-    private String referrer;
-    private int timeout;
-
-
     private List<Indexing> taskList = new ArrayList<>();
-
-
 
     /*@Value("${userAgent в application.yml}")
     private String userAgent;
@@ -64,8 +60,6 @@ public class Indexing extends RecursiveAction {
         this.lemmaRepository = lemmaRepository;
         this.lemmaFinder = lemmaFinder;
         this.site = site;
-
-        //System.out.println("indexing starts");
     }
 
     @Override
@@ -77,38 +71,27 @@ public class Indexing extends RecursiveAction {
     @SneakyThrows
     @Override
     protected void compute() {
-
+        Thread.sleep(550);
         if (IndexingServiceImpl.stop) {
             cancel(true);
         }
 
-        Set<String> linksSet;
-        int statusCode;
-        //String refLink;
-        Connection connection;
-        Document document;
+        System.out.println("Thread" + Thread.currentThread().getName() + "connect to: "+ link);
+        Connection connection = Jsoup.connect(link).ignoreHttpErrors(true);
+        Document document = connection.userAgent(userAgent).get();
+        int statusCode = connection.response().statusCode();
 
-
-            connection = Jsoup.connect(link).ignoreHttpErrors(true);
-            Thread.sleep(550);
-            document = connection.userAgent(userAgent).get();
-
-        statusCode = connection.response().statusCode();
-
-        //refLink = document.select("a").first().attr("href");
-        URL refLink = new URL(link);
         Page page = new Page();
         page.setSite(site);
-        page.setPath(refLink.getPath());
+        page.setPath(new URL(link).getPath());
         page.setCode(statusCode);
         page.setContent(document.toString());
-        int pageId = pageRepository.save(page).getId();
-        //lemmaFinder.collectLemmas(pageId);
+        int pageId = pageRepository.saveAndFlush(page).getId();
+        lemmaFinder.collectLemmas(pageId);
         site.setStatusTime(LocalDateTime.now());
-        siteRepository.save(site);
+        siteRepository.saveAndFlush(site);
 
-
-        linksSet = document.select("a").stream()
+        Set<String> linksSet = document.select("a").stream()
                 .map(e -> e.attr("abs:href"))
                 .filter(e -> e.contains(site.getUrl())
                         && !e.contains("#") //TODO: add to config
@@ -125,17 +108,16 @@ public class Indexing extends RecursiveAction {
 
         linksSet.removeAll(IndexingServiceImpl.globalLinksSet);
         IndexingServiceImpl.globalLinksSet.addAll(linksSet);
+
+        System.out.println("linksSet size: " + linksSet.size());
         for (String subLink : linksSet) {
             Indexing parse = new Indexing(subLink, site, siteRepository, pageRepository, lemmaRepository, lemmaFinder);
-
             taskList.add(parse);
         }
         ForkJoinTask.invokeAll(taskList);
-
-        //lemmaFinder.saveIndex(page);
-        System.out.println("Set size: " + IndexingServiceImpl.globalLinksSet.size());
+        System.out.println(Thread.currentThread().getName() + " isCancelled: " + isCancelled());
+        System.out.println(Thread.currentThread().getName() + " isCompletedAbnormally: " + isCompletedAbnormally());
+        //System.out.println("Set size: " + IndexingServiceImpl.globalLinksSet.size());
         taskList.forEach(Indexing::join);
-
-        //System.out.println("Indexing ended");
     }
 }

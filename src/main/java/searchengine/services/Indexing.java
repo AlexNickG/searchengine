@@ -81,13 +81,17 @@ public class Indexing extends RecursiveAction {
         Document document = connection.userAgent(userAgent).get();
         int statusCode = connection.response().statusCode();
 
+        String content = document.toString();
+        if (String.valueOf(statusCode).startsWith("4") || String.valueOf(statusCode).startsWith("5")) {
+            content = null;
+        }
         Page page = new Page();
         page.setSite(site);
         page.setPath(new URL(link).getPath());
         page.setCode(statusCode);
-        page.setContent(document.toString());
+        page.setContent(content);
         int pageId = pageRepository.saveAndFlush(page).getId();
-        lemmaFinder.collectLemmas(pageId);
+        lemmaFinder.collectLemmas(pageId);//why does the location where this method is called have no effect?
         site.setStatusTime(LocalDateTime.now());
         siteRepository.saveAndFlush(site);
 
@@ -115,6 +119,7 @@ public class Indexing extends RecursiveAction {
             taskList.add(parse);
         }
         ForkJoinTask.invokeAll(taskList);
+
         System.out.println(Thread.currentThread().getName() + " isCancelled: " + isCancelled());
         System.out.println(Thread.currentThread().getName() + " isCompletedAbnormally: " + isCompletedAbnormally());
         //System.out.println("Set size: " + IndexingServiceImpl.globalLinksSet.size());

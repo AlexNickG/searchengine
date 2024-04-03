@@ -46,9 +46,11 @@ public class IndexingServiceImpl implements IndexingService {
     public static volatile boolean stop;
     public List<Runnable> threadList = new ArrayList<>();
     public List<ForkJoinTask<Void>> fjpList = new ArrayList<>();
+    long start;
 
     @Override
     public ResponseMessage startIndexing() {
+        start = System.currentTimeMillis();
 
 
         List<Site> indexingSites = siteRepository.findAll();
@@ -63,12 +65,12 @@ public class IndexingServiceImpl implements IndexingService {
         globalLinksSet.clear();
         stop = false;
         stopIndexing = false;
-        siteRepository.setForeignKeyCheckNull();
+        /*siteRepository.setForeignKeyCheckNull();
         indexRepository.deleteIndex();
         lemmaRepository.deleteLemmas();
         pageRepository.deletePages();
         siteRepository.deleteAllSites();
-        siteRepository.setForeignKeyCheckNotNull();
+        siteRepository.setForeignKeyCheckNotNull();*/
         //siteRepository.deleteAll();
         executor = Executors.newFixedThreadPool(sites.getSites().size());
         for (int i = 0; i < sites.getSites().size(); i++) {
@@ -205,6 +207,8 @@ public class IndexingServiceImpl implements IndexingService {
                     break;
                 }
                 if (task.isCompletedNormally()) {
+                    //indexRepository.saveAllAndFlush(lemmaFinder.indexSet);
+                    lemmaFinder.saveIndex();
                     //List<Page> pageList = pageRepository.findAll();
                     //pageList.forEach(lemmaFinder::collectLemmas);
                     site.setUrl(link);
@@ -214,6 +218,7 @@ public class IndexingServiceImpl implements IndexingService {
                     siteRepository.save(site);
                     forkJoinPool.shutdown();
                     System.out.println("The task was done");
+                    System.out.println("It's took " + (System.currentTimeMillis() - start) / 1000 + " seconds");
                     //stopIndexing = true;
                     break;
                 }

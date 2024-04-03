@@ -67,11 +67,11 @@ public class SearchServiceImpl implements SearchService {
         }*/
 
         Lemma lemmaDb;
-        List<Lemma> lemmaDbList;
+        List<Lemma> lemmaDbList = new ArrayList<>();
         List<Lemma> lemmaDbListExisted = new ArrayList<>();
         if (site == null) { //search over all sites of index
             for (String lemmaWord : queryLemmasSet) {
-                lemmaDbList = lemmaRepository.findByLemma(lemmaWord);
+                lemmaDbList.addAll(lemmaRepository.findByLemma(lemmaWord));
                 lemmaDbListExisted = lemmaDbList.stream().filter(Objects::nonNull).toList();
             }
         } else { //search over selected site of index
@@ -94,19 +94,29 @@ public class SearchServiceImpl implements SearchService {
         Comparator<Lemma> compareByFreq = Comparator.comparing(Lemma::getFrequency);
         List<Lemma> sortedLemmaDbList = lemmaDbListExisted.stream().sorted(compareByFreq).toList();
         Document doc;
-        for (Lemma lemma : sortedLemmaDbList) {
-            List<Page> pages = lemma.getPages();
-            for (Page page : pages) {
-                doc = Jsoup.parse(page.getContent());
-                SearchData searchData = new SearchData();
-                searchData.setSiteName(lemma.getSite().getName());
-                searchData.setUri(page.getPath());
-                searchData.setSite(lemma.getSite().getUrl());//repository.findByName(site).getUrl());
-                searchData.setSnippet("what <b>is</b> snippet?");
-                searchData.setTitle(doc.title());
-                searchData.setRelevance(0.989F + offset);
-                data.add(searchData);
+        List<Page> pageByLemmaTotal = new ArrayList<>(sortedLemmaDbList.get(0).getPages());
+        for (int i = 0; i < sortedLemmaDbList.size(); i++) {//check logic
+            //List<Page> pages = lemma.getPages();
+            List<Page> pageByLemma = new ArrayList<>();
+            for (Page page : pageByLemmaTotal) {
+
+                if (page.getLemmas().contains(sortedLemmaDbList.get(i))) {
+                    pageByLemma.add(page);
+                }
+
             }
+            pageByLemmaTotal = pageByLemma;
+        }
+        for (Page page : pageByLemmaTotal) {
+            doc = Jsoup.parse(page.getContent());
+            SearchData searchData = new SearchData();
+            searchData.setSiteName(page.getSite().getName());
+            searchData.setUri(page.getPath());
+            searchData.setSite(page.getSite().getUrl());//repository.findByName(site).getUrl());
+            searchData.setSnippet("what <b>is</b> snippet?");
+            searchData.setTitle(doc.title());
+            searchData.setRelevance(0.989F + offset);
+            data.add(searchData);
         }
 
         searchResponse.setResult(true);

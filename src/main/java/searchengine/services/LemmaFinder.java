@@ -15,6 +15,7 @@ import searchengine.model.Page;
 import java.io.IOException;
 import java.sql.SQLException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
@@ -24,7 +25,7 @@ public class LemmaFinder { //нужно ли создавать экземпля
     private LuceneMorphology luceneMorph;
     private final PageRepository pageRepository;
     private static StringBuilder insertQuery = new StringBuilder();
-
+    Set<Index> indexSet = ConcurrentHashMap.newKeySet();
     {
         try {
             luceneMorph = new RussianLuceneMorphology();
@@ -41,7 +42,8 @@ public class LemmaFinder { //нужно ли создавать экземпля
 
         for (String word : words) {
             List<String> wordBaseForms = luceneMorph.getMorphInfo(word);
-            if (wordBaseForms.stream().anyMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ") || w.length() < 3)) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
+            if (wordBaseForms.stream().anyMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ") || getLemma(word).length() < 3)) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
+                System.out.println("match");
             } else {
                 if (!lemmasMap.containsKey(getLemma(word))) {
                     lemmasMap.put(getLemma(word), 1);
@@ -60,7 +62,7 @@ public class LemmaFinder { //нужно ли создавать экземпля
 
     public void saveLemmas(HashMap<String, Integer> lemmasMap, Page page) throws SQLException { //TODO: продумать сохранение лемм и индексов
 
-        Set<Index> indexSet = new HashSet<>();
+
         int lemmaId;
         Lemma dbLemma;
         List<Lemma> dbLemmaS;
@@ -92,9 +94,12 @@ public class LemmaFinder { //нужно ли создавать экземпля
             indexSet.add(indexEntity);
         }
         //indexRepository.executeMultiInsert(insertQuery.toString());
-        indexRepository.saveAllAndFlush(indexSet);
+        //indexRepository.saveAllAndFlush(indexSet);
     }
 
+    public void saveIndex() {
+        indexRepository.saveAllAndFlush(indexSet);
+    }
     private String getText(Page page) {
         return page.getContent();
     }

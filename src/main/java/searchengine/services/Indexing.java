@@ -20,6 +20,7 @@ import searchengine.model.Status;
 
 import javax.annotation.PreDestroy;
 import java.io.IOException;
+import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -76,14 +77,21 @@ public class Indexing extends RecursiveAction {
             cancel(true);
         }
 
+        Document document = null;
+        int statusCode;
         System.out.println("Thread" + Thread.currentThread().getName() + "connect to: "+ link);
         Connection connection = Jsoup.connect(link).ignoreHttpErrors(true);
-        Document document = connection.userAgent(userAgent).get();
-        int statusCode = connection.response().statusCode();
+        try {
+            document = connection.userAgent(userAgent).get();
+            statusCode = connection.response().statusCode();
+        } catch (SocketTimeoutException ste) {
+            statusCode = 494;
+        }
+
 
         String content = document.toString();
         if (String.valueOf(statusCode).startsWith("4") || String.valueOf(statusCode).startsWith("5")) {
-            content = null;
+            content = document.toString();
         }
         Page page = new Page();
         page.setSite(site);

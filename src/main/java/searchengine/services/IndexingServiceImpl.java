@@ -6,6 +6,7 @@ import lombok.Setter;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import searchengine.Repositories.IndexRepository;
 import searchengine.Repositories.LemmaRepository;
@@ -21,6 +22,7 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.*;
@@ -208,7 +210,12 @@ public class IndexingServiceImpl implements IndexingService {
                 }
                 if (task.isCompletedNormally()) {
                     //indexRepository.saveAllAndFlush(lemmaFinder.indexSet);
-                    lemmaFinder.saveIndex();
+                    try {
+                        lemmaFinder.saveIndex();
+                    } catch (PessimisticLockingFailureException plfe) {
+                        System.out.println(Arrays.toString(plfe.getStackTrace()));
+                    }
+
                     //List<Page> pageList = pageRepository.findAll();
                     //pageList.forEach(lemmaFinder::collectLemmas);
                     site.setUrl(link);

@@ -1,6 +1,7 @@
 package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 
@@ -17,6 +18,7 @@ import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class LemmaFinder { //нужно ли создавать экземпляр класса? или использовать статические методы?
@@ -43,7 +45,7 @@ public class LemmaFinder { //нужно ли создавать экземпля
         for (String word : words) {
             List<String> wordBaseForms = luceneMorph.getMorphInfo(word);
             if (wordBaseForms.stream().anyMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ") || getLemma(word).length() < 3)) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
-                System.out.println("match");
+                //System.out.println("match");
             } else {
                 if (!lemmasMap.containsKey(getLemma(word))) {
                     lemmasMap.put(getLemma(word), 1);
@@ -98,7 +100,9 @@ public class LemmaFinder { //нужно ли создавать экземпля
     }
 
     public void saveIndex() {
-        indexRepository.saveAllAndFlush(indexSet);
+        synchronized(indexRepository) {
+            indexRepository.saveAll(indexSet);
+        }
     }
     private String getText(Page page) {
         return page.getContent();

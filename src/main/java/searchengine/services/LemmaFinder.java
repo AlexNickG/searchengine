@@ -43,7 +43,7 @@ public class LemmaFinder { //нужно ли создавать экземпля
         for (String word : words) {
             List<String> wordBaseForms = luceneMorph.getMorphInfo(word);
             if (wordBaseForms.stream().anyMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ") || getLemma(word).length() < 3)) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
-                System.out.println("match");
+                //System.out.println("match");
             } else {
                 if (!lemmasMap.containsKey(getLemma(word))) {
                     lemmasMap.put(getLemma(word), 1);
@@ -70,15 +70,14 @@ public class LemmaFinder { //нужно ли создавать экземпля
 
             Index indexEntity = new Index();
             synchronized (lemmaRepository) {
-                dbLemmaS = lemmaRepository.findByLemmaAndSite_Id(entry.getKey(), page.getSite().getId());
-
-                if (!dbLemmaS.isEmpty()) {
-                    dbLemma = dbLemmaS.get(0);
+                dbLemma = lemmaRepository.findByLemmaAndSite_Id(entry.getKey(), page.getSite().getId());
+                if (dbLemma != null) {
+                    //dbLemma = dbLemmaS.get(0);
                     dbLemma.setFrequency(dbLemma.getFrequency() + 1);
-                    if (dbLemmaS.size() > 1) {
-                        System.out.println("Two identical lemmas!");
-                        dbLemmaS.forEach(System.out::println);
-                    }
+//                    if (dbLemmaS.size() > 1) {
+//                        System.out.println("Two identical lemmas!");
+//                        dbLemmaS.forEach(System.out::println);
+//                    }
                 } else {
                     dbLemma = new Lemma();
                     dbLemma.setSite(page.getSite());

@@ -26,12 +26,12 @@ indexing-settings:
   sites:
     #- url: https://lenta.ru/
     #  name: Лента.ру
-    - url: https://skillbox.ru
-      name: Skillbox
-    #- url: https://playback.ru/
-    #  name: PlayBack.Ru
-    #- url: https://nopaper.ru/
-    #  name: NoPaper.ru
+    #- url: https://skillbox.ru
+    #  name: Skillbox
+    - url: https://playback.ru/
+      name: PlayBack.Ru
+    - url: https://nopaper.ru/
+      name: NoPaper.ru
     #- url: http://cimus.biz
     #  name: DOM
     #- url: https://exotic-zoo.ru

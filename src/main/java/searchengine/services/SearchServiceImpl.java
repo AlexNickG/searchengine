@@ -2,6 +2,7 @@ package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
 import org.apache.lucene.morphology.LuceneMorphology;
+import org.apache.lucene.morphology.WrongCharaterException;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -39,65 +40,72 @@ public class SearchServiceImpl implements SearchService {
     private final SiteRepository siteRepository;
     private final PageRepository pageRepository;
     private final IndexRepository indexRepository;
+    List<SearchData> data = new ArrayList<>();
+    SearchResponse searchResponse = new SearchResponse();
 
     @Override
     public SearchResponse getSearchResult(String query, int offset, int limit, String site) {
-
-        List<SearchData> data = new ArrayList<>();
-        SearchResponse searchResponse = new SearchResponse();
-        Set<String> queryLemmasSet = new HashSet<>();
-        String[] words = query.toLowerCase(Locale.ROOT).replaceAll("[^а-я\\s]", " ").trim().split("\\s+");
-        if (words.length == 0) {
-            searchResponse.setResult(false);
-            searchResponse.setCount(0);
-            searchResponse.setData(null);
-            searchResponse.setError("Некорректный запрос");
-            return searchResponse;
-        }
-        for (String word : words) {
-            List<String> wordBaseForms = luceneMorph.getMorphInfo(word); //падает при поиске на латинице
-            if (wordBaseForms.stream().noneMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ") || w.length() < 3)) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
-                queryLemmasSet.add(luceneMorph.getNormalForms(word).get(0));
+        //TODO: оптимизировать так, чтобы при нажатии кнопки Show more выдавались следующие страницы без повторной обработки данных
+        if (offset == 0) {
+            data = new ArrayList<>();
+            searchResponse = new SearchResponse();
+            Set<String> queryLemmasSet = new HashSet<>();
+            String[] words = query.toLowerCase(Locale.ROOT).replaceAll("[^а-я0-9\\s]", " ").trim().split("\\s+");
+            if (words.length == 0) {
+                searchResponse.setResult(false);
+                searchResponse.setCount(0);
+                searchResponse.setData(null);
+                searchResponse.setError("Некорректный запрос");
+                return searchResponse;
             }
-        }
+
+            for (String word : words) {
+                List<String> wordBaseForms = luceneMorph.getMorphInfo(word); //падает при поиске на латинице
+                if (wordBaseForms.stream().noneMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ"))) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
+                    queryLemmasSet.add(luceneMorph.getNormalForms(word).get(0));
+                }
+            }
 
         /*Map<String, Integer> sorted = queryLemmasMap.entrySet().stream()
                 .sorted(Map.Entry.comparingByValue())
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, LinkedHashMap::new)); //TODO: find out what does it mean*/
 
-        /*for (Map.Entry<String, Integer> map : sorted.entrySet()) {
-            System.out.println(map.getKey() + " " + map.getValue());
-        }*/
+            Lemma lemmaDb;
+            List<Site> siteList = new ArrayList<>();
+            List<Lemma> sortedLemmaDbList = new ArrayList<>();
+            HashMap<Page, Float> pageMapRel = new HashMap<>();
+            Map<Page, Float> sortedMapRelRank = new LinkedHashMap<>();
 
-        Lemma lemmaDb;
-
-
-        List<Site> siteList = new ArrayList<>();
-        HashMap<Page, Float> pageMapRel = new HashMap<>();
-        Map<Page, Float> sortedMapRelRank = new LinkedHashMap<>();
-        if (site == null) { //search over all sites of index
-            siteList = siteRepository.findAll();
-        } else {
-            siteList.add(siteRepository.findByUrl(site));
-        }
-        for (Site dbSite : siteList) { //перебираем все сайты
-            List<Lemma> lemmaDbListExisted = new ArrayList<>();
-            List<Page> pageByLemmaTotal = new ArrayList<>();
-            for (String lemmaWord : queryLemmasSet) { // для каждого слова из запроса получаем леммы из БД, страницы им соответствующие и считаем их суммарный rank
-                lemmaDb = lemmaRepository.findByLemmaAndSite_Id(lemmaWord, siteRepository.findByUrl(dbSite.getUrl()).getId()); //получаем лемму из БД
-                if (lemmaDb != null) {
-                    lemmaDbListExisted.add(lemmaDb);// если лемма есть в БД, добавляем ее в список
-                }
+            if (site == null) { //search over all sites of index
+                siteList = siteRepository.findAll();
+            } else {
+                siteList.add(siteRepository.findByUrl(site));
             }
-            if (lemmaDbListExisted.size() == queryLemmasSet.size()) {//если количество лемм в БД равно количеству слов в запросе (а если хотя бы одного слова из запроса нет на сайте, не выдавать ничего
-                List<Lemma> finishLemmaList = new ArrayList<>();
-                int quantityPages = lemmaDbListExisted.stream().mapToInt(l -> l.getPages().size()).sum();
-                for (Lemma lemma : lemmaDbListExisted) {
-                    if (100 * lemma.getPages().size() / quantityPages <= 100) { //если число страниц для данной леммы слишком большое TODO: продумать алгоритм снижения выдачи результатов
-                        finishLemmaList.add(lemma);
+
+            for (Site dbSite : siteList) { //перебираем все сайты
+                int quantityPagesBySite = pageRepository.findBySite_id(dbSite.getId()).size();//суммарное количество страниц на сайте
+                List<Lemma> lemmaDbListExisted = new ArrayList<>();
+                List<Page> pageByLemmaTotal = new ArrayList<>();
+                for (String lemmaWord : queryLemmasSet) { // для каждого слова из запроса получаем леммы из БД, страницы им соответствующие и считаем их суммарный rank
+                    lemmaDb = lemmaRepository.findByLemmaAndSite_Id(lemmaWord, siteRepository.findByUrl(dbSite.getUrl()).getId()); //получаем лемму из БД
+                    if (lemmaDb != null) {
+                        lemmaDbListExisted.add(lemmaDb);// если лемма есть в БД, добавляем ее в список
                     }
                 }
-                List<Lemma> sortedLemmaDbList = sortLemmasByFreq(finishLemmaList); //сортируем леммы в порядке частоты встречаемости
+                if (lemmaDbListExisted.size() == queryLemmasSet.size()) {//Если все леммы из запроса для этого сайта есть в БД (а если хотя бы одного слова из запроса нет на сайте, не выдавать ничего). Уточнить логику
+                    List<Lemma> finishLemmaList = new ArrayList<>();//TODO: проверить правильную работу для запроса "купить по безналичному расчету"
+
+                    int quantityPagesByLemmas = lemmaDbListExisted.stream().mapToInt(l -> l.getPages().size()).sum();//сумма страниц для всех лемм из запроса
+
+                    for (Lemma lemma : lemmaDbListExisted) {
+//                        if (100 * lemma.getPages().size() / quantityPagesByLemmas <= 100) { //отношение количества страниц для каждой леммы к сумме страниц для всех лемм запроса TODO: продумать алгоритм снижения выдачи результатов
+//                            finishLemmaList.add(lemma);
+//                        }
+                        if (100 * lemma.getPages().size() / quantityPagesBySite < 100) {//отношение количества страниц для каждой леммы к общему количеству страниц сайта
+                            finishLemmaList.add(lemma);
+                        }
+                    }
+                    sortedLemmaDbList = sortLemmasByFreq(finishLemmaList); //сортируем леммы в порядке частоты встречаемости
                 /*List<Lemma> lemmasToRemove = new ArrayList<>();
                 for (Lemma lemma : sortedLemmaDbList) {
                  if (lemma.getPages().size() <= 10000) { //если число страниц для данной леммы слишком большое TODO: продумать алгоритм снижения выдачи результатов
@@ -109,67 +117,81 @@ public class SearchServiceImpl implements SearchService {
                 }
                 sortedLemmaDbList.removeAll(lemmasToRemove);
                 lemmaDbListExisted = sortedLemmaDbList.stream().filter(lemmasToRemove::contains).toList();*/
-                //List<Page> pagesList = new ArrayList<>();
-                for (Lemma lemma : sortedLemmaDbList) { //По первой, самой редкой лемме из списка, находим все страницы, на которых она встречается. Далее ищем соответствия следующей леммы из этого списка страниц
-                    if (pageByLemmaTotal.isEmpty()) {
-                        pageByLemmaTotal.addAll(lemma.getPages());
-                    } else {
-                        pageByLemmaTotal.retainAll(lemma.getPages());
-                    }
-                }
 
-                for (Page page : pageByLemmaTotal) { //для каждой страницы считаем суммарный rank лемм, найденных на этой странице
-                    pageMapRel.put(page, calcPageRelevance(page, lemmaDbListExisted));
-                }
-                for (Map.Entry<Page, Float> entry : pageMapRel.entrySet()) {// test method
-                    System.out.println(entry.getKey().getId() + " - " + entry.getValue());
+                    for (Lemma lemma : sortedLemmaDbList) { //По первой, самой редкой лемме из списка, находим все страницы, на которых она встречается. Далее ищем соответствия следующей леммы из этого списка страниц
+                        if (pageByLemmaTotal.isEmpty()) {
+                            pageByLemmaTotal.addAll(lemma.getPages());
+                        } else {
+                            pageByLemmaTotal.retainAll(lemma.getPages());//неправильно?
+                            if (pageByLemmaTotal.isEmpty()) {
+                                return returnNothingFound();//Если в итоге не осталось ни одной страницы, то выводить пустой список
+                            }
+                        }
+                    }
+
+                    for (Page page : pageByLemmaTotal) { //для каждой страницы считаем суммарный rank лемм, найденных на этой странице
+                        pageMapRel.put(page, calcPageRelevance(page, lemmaDbListExisted));
+                    }
+//                    for (Map.Entry<Page, Float> entry : pageMapRel.entrySet()) {// test method
+//                        System.out.println(entry.getKey().getId() + " - " + entry.getValue());
+//                    }
                 }
             }
-        }
 
-        if (pageMapRel.isEmpty()) {
+            if (pageMapRel.isEmpty()) {
+                return returnNothingFound();
+            }
+            Map<Page, Float> sortedMap = pageMapRel.entrySet()//сортируем страницы в списке по rank'у от большего к меньшему
+                    .stream()
+                    .sorted(Map.Entry.<Page, Float>comparingByValue().reversed())
+                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (oldValue, newValue) -> oldValue, LinkedHashMap::new));
+            float maxRank;
+            Optional<Float> maxRankOptional = sortedMap.values().stream().max(Float::compare);// находим максимальный rank
+            maxRank = maxRankOptional.isPresent() ? maxRankOptional.get() : 1;  //если удается найти maxRank
+            System.out.println("MaxRank: " + maxRank);
+            for (Map.Entry<Page, Float> entry : sortedMap.entrySet()) {//считаем и сохраняем относительный rank
+                Page page = entry.getKey();
+                float value = entry.getValue() / maxRank;
+                System.out.println("Relative rank: " + value);
+                sortedMapRelRank.put(page, value);
+            }
+
+            for (Map.Entry<Page, Float> entry : sortedMapRelRank.entrySet()) {//для каждой страницы, отсортированной по rank'у готовим ответ в соответствующем формате
+                Page page = entry.getKey();
+                Document doc = Jsoup.parse(page.getContent());
+                List<String> text = Arrays.stream(doc.body().text().toLowerCase(Locale.ROOT).replaceAll("[^а-я0-9\\s]", " ").trim().split("\\s+")).toList();//TODO: перенести внутрь метода getSnippet
+                SearchData searchData = new SearchData();
+                searchData.setSiteName(entry.getKey().getSite().getName());
+                searchData.setUri(page.getPath());
+                searchData.setSite(page.getSite().getUrl());
+                searchData.setSnippet(getSnippet(sortedLemmaDbList, text) + " - " + entry.getValue());
+                searchData.setTitle(doc.title());
+                searchData.setRelevance(entry.getValue());
+                data.add(searchData);
+            }
+
             searchResponse.setResult(true);
-            searchResponse.setCount(0);
-            searchResponse.setData(null);
-            searchResponse.setError("Nothing found");
+            searchResponse.setCount(data.size());
+            if (offset + limit > data.size()) {
+                limit = data.size() - offset;
+            }
+            searchResponse.setData(data.subList(offset, offset + limit));
+            return searchResponse;
+        } else {
+            if (offset + limit > data.size()) {
+                limit = data.size() - offset;
+            }
+            searchResponse.setData(data.subList(offset, offset + limit));
+            //searchResponse.setError("");
             return searchResponse;
         }
-        Map<Page, Float> sortedMap = pageMapRel.entrySet()//сортируем страницы в списке по rank'у от большего к меньшему
-                .stream()
-                .sorted(Map.Entry.<Page, Float>comparingByValue().reversed())
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (oldValue, newValue) -> oldValue, LinkedHashMap::new));
-        float maxRank;
-        Optional<Float> maxRankOptional = sortedMap.values().stream().max(Float::compare);// находим максимальный rank
-        maxRank = maxRankOptional.isPresent() ? maxRankOptional.get() : 1;  //если удается найти maxRank
-        System.out.println("MaxRank: " + maxRank);
-        for (Map.Entry<Page, Float> entry : sortedMap.entrySet()) {//считаем и сохраняем относительный rank
-            Page page = entry.getKey();
-            float value = entry.getValue() / maxRank;
-            System.out.println("Relative rank: " + value);
-            sortedMapRelRank.put(page, value);
-        }
+    }
 
-        for (Map.Entry<Page, Float> entry : sortedMapRelRank.entrySet()) {//для каждой страницы, отсортированной по rank'у готовим ответ в соответствующем формате
-            Page page = entry.getKey();
-            Document doc = Jsoup.parse(page.getContent());
-            List<String> text = Arrays.stream(doc.body().text().toLowerCase(Locale.ROOT).replaceAll("[^а-я\\s]", " ").trim().split("\\s+")).toList();
-            SearchData searchData = new SearchData();
-            searchData.setSiteName(entry.getKey().getSite().getName());
-            searchData.setUri(page.getPath());
-            searchData.setSite(page.getSite().getUrl());
-            searchData.setSnippet(getSnippet(queryLemmasSet, text) + " - " + entry.getValue());
-            searchData.setTitle(doc.title());
-            searchData.setRelevance(entry.getValue());
-            data.add(searchData);
-        }
-
+    SearchResponse returnNothingFound() {
         searchResponse.setResult(true);
-        searchResponse.setCount(data.size());
-        if (offset + limit > data.size()) {
-            limit = data.size() - offset;
-        }
-        searchResponse.setData(data.subList(offset, offset + limit));
-        //searchResponse.setError("");
+        searchResponse.setCount(0);
+        searchResponse.setData(null);
+        searchResponse.setError("Nothing found");
         return searchResponse;
     }
 
@@ -191,57 +213,88 @@ public class SearchServiceImpl implements SearchService {
         return relevance;
     }
 
-    String getWordNormalForm(String word) {
+    /*String getWordNormalForm(String word) {
         String wordNormalForm = null;
-        List<String> wordBaseForms = luceneMorph.getMorphInfo(word);
-        if (wordBaseForms.stream().noneMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ") || w.length() < 3)) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
-            wordNormalForm = luceneMorph.getNormalForms(word).get(0);
-        }
-        return wordNormalForm;
-    }
-
-    /*String getSnippet(Set<String> queryLemmasSet, List<String> text) {
-        StringBuilder snippet = new StringBuilder();
-        for (String word : text) {
-            if (queryLemmasSet.contains(getWordNormalForm(word))) {
-                int index = text.indexOf(word);
-                if (index != -1) {
-                    //snippet.append(text.get(index - 2)).append(" ").append(text.get(index - 1)).append(" <b>").append(word).append("</b> ").append(text.get(index + 1)).append(" ").append(text.get(index + 2)).append("<br>");
-                    snippet.append("...").append(" <b>").append(word).append("</b> ").append("...").append("<br>");
-                }
+        try {
+            List<String> wordBaseForms = luceneMorph.getMorphInfo(word);
+            if (wordBaseForms.stream().noneMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ") || w.length() < 3)) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
+                wordNormalForm = luceneMorph.getNormalForms(word).get(0);
             }
+            return wordNormalForm;
+        } catch (WrongCharaterException wce) {
+            return word;
         }
-        return String.valueOf(snippet);
+
     }*/
 
-    String getSnippet(Set<String> queryLemmasSet, List<String> text) {
+    String getWordNormalForm(String word) {
+        try {
+            return luceneMorph.getNormalForms(word).get(0);
+        } catch (WrongCharaterException wce) {
+            return word;
+        }
+    }
 
-        List<StringBuilder> snippetList = new ArrayList<>();
-        for (String lemmaWord : queryLemmasSet) {
-            StringBuilder snippet = new StringBuilder();
-            StringBuilder snippet1 = new StringBuilder();
-            StringBuilder snippet2 = new StringBuilder();
+    String getSnippet(List<Lemma> queryLemmasList, List<String> text) {
+        StringBuilder finalSnippet = new StringBuilder();
+        Map<List<String>, Integer> snippetList = new HashMap<>();
+        for (Lemma lemmaWord : queryLemmasList) {
             for (String word : text) {
                 String wordNormalForm = getWordNormalForm(word);
-                if (lemmaWord.equals(wordNormalForm)) {
+                if (lemmaWord.getLemma().equals(wordNormalForm)) {
                     int index = text.indexOf(word);
                     if (index != -1) {
                         if ((index - 5) >= 0 && (index + 5) <= text.size()) {
-                            List<String> text1 = new ArrayList<>(text.subList(index - 5, index - 1));
-                            List<String> text2 = new ArrayList<>(text.subList(index + 1, index + 5));
-                            text1.forEach(e -> snippet1.append(e).append(" "));
-                            text2.forEach(e -> snippet2.append(e).append(" "));
+                            snippetList.put(text.subList(index - 5, index + 5), 0);
+                        } else if ((index + 5) <= text.size()) {
+                            snippetList.put(text.subList(0, index + 5), 0);
+                        } else if ((index - 5) >= 0) {
+                            snippetList.put(text.subList(index - 5, text.size()), 0);
                         }
-                        //snippet.append(text.get(index - 2)).append(" ").append(text.get(index - 1)).append(" <b>").append(word).append("</b> ").append(text.get(index + 1)).append(" ").append(text.get(index + 2)).append("<br>");
-                        snippetList.add(snippet.append(snippet1).append(" <b>").append(word).append("</b> ").append(snippet2));
-                        break;
                     }
-
                 }
-
             }
 
+            snippetList = snippetList.entrySet().stream()//формируем map сниппет - количество совпадений слов из поискового запроса
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            entry -> entry.getKey().stream()
+                                    .filter(s -> getWordNormalForm(s) != null)
+                                    .anyMatch(s -> getWordNormalForm(s)
+                                            .equals(lemmaWord.getLemma())) ? entry.getValue() + 1 : entry.getValue()
+                    ));
         }
-        return String.join("...", snippetList);
+
+        Optional<Integer> limitOptional = snippetList.values().stream().max(Integer::compare);
+        int limitInt = queryLemmasList.size() == limitOptional.orElse(1) ? 1 : 3; //изменяем число строк сниппета в зависимости от количества слов запроса, попавших в одну строку
+        // Сортируем карту по значениям в обратном порядке и берем первые самые релевантные сниппеты. Их количество зависит от разброса слов из поискового запроса по тексту
+        List<String> topSnippetList = snippetList.entrySet().stream()
+                .sorted(Map.Entry.<List<String>, Integer>comparingByValue().reversed())
+                .limit(limitInt)
+                .map(entry -> String.join(" ", entry.getKey()))
+                .collect(Collectors.toList());
+
+        /*Map<List<String>, Integer> topSnippetList = snippetList.entrySet().stream()
+                .sorted(Map.Entry.<List<String>, Integer>comparingByValue().reversed())
+                .limit(limitInt)
+                .collect(Collectors.toMap(Map.Entry::getKey,
+                Map.Entry::getValue,
+                        (e1, e2) -> e1,
+                        LinkedHashMap::new));*/
+        //List<String> topSnippetList = snippetList.keySet().stream().limit(3).map(keyList -> String.join(" ", keyList)).toList(); //берем первые три самых релевантных сниппета
+        String wholeSnippetText = String.join(" ... ", topSnippetList);//соединяем сниппеты в строку
+        List<String> words = Arrays.stream(wholeSnippetText//преобразуем строку сниппетов в List
+                        .trim()
+                        .split("\\s+"))
+                .toList();
+        //String wholeSnippetText = topSnippetList.stream().map(String::valueOf).collect(Collectors.joining(" "));
+        //List<String> words = Arrays.stream(wholeSnippetText.toLowerCase(Locale.ROOT).replaceAll("[^а-я0-9\\s]", " ").trim().split("\\s+")).toList();
+        List<String> queryWordsList = queryLemmasList.stream().map(Lemma::getLemma).toList();
+        List<String> t = words.stream()//выделяем в тексте страницы жирным шрифтом все слова из поискового запроса
+                .map(word -> queryWordsList.contains(getWordNormalForm(word.toLowerCase(Locale.ROOT))) ? "<b>" + word + "</b>" : word)
+                .toList();
+        finalSnippet.append("...").append(t.stream().map(String::valueOf).collect(Collectors.joining(" "))).append("...");
+
+        return finalSnippet.toString();
     }
 }

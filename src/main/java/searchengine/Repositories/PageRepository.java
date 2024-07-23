@@ -21,5 +21,5 @@ public interface PageRepository extends JpaRepository<Page, Integer> {
 //    @Query(value = "select * from search_engine.page where path like ?1", nativeQuery = true)
     Page findByPath(String link);
 
-    //List<Page> findByLemmasAndSite_idOrderByFrequencyAsc(String lemma, int site_id);
+    List<Page> findBySite_id(int site_id);
 }

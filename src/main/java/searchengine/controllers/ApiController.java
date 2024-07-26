@@ -74,7 +74,7 @@ public class ApiController {
         if (query.isEmpty()) {
             SearchResponse searchResponse = new SearchResponse();
             searchResponse.setResult(false);
-            //searchResponse.setError("Задан пустой поисковый запрос");
+            searchResponse.setError("Задан пустой поисковый запрос");
             return new ResponseEntity<>(searchResponse, HttpStatus.BAD_REQUEST);
         }
         return new ResponseEntity<>(searchService.getSearchResult(query, offset, limit, site), HttpStatus.OK);

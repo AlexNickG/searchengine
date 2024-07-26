@@ -45,22 +45,22 @@ public class SearchServiceImpl implements SearchService {
 
     @Override
     public SearchResponse getSearchResult(String query, int offset, int limit, String site) {
-        //TODO: оптимизировать так, чтобы при нажатии кнопки Show more выдавались следующие страницы без повторной обработки данных
+        //TODO: оптимизировать так, чтобы при нажатии кнопки Show more выдавались следующие страницы без повторной обработки данных DONE!
         if (offset == 0) {
             data = new ArrayList<>();
             searchResponse = new SearchResponse();
             Set<String> queryLemmasSet = new HashSet<>();
             String[] words = query.toLowerCase(Locale.ROOT).replaceAll("[^а-я0-9\\s]", " ").trim().split("\\s+");
-            if (words.length == 0) {
-                searchResponse.setResult(false);
-                searchResponse.setCount(0);
-                searchResponse.setData(null);
-                searchResponse.setError("Некорректный запрос");
-                return searchResponse;
-            }
+//            if (words.length == 0) {
+//                searchResponse.setResult(false);
+//                searchResponse.setCount(0);
+//                searchResponse.setData(null);
+//                searchResponse.setError("Некорректный запрос");
+//                return searchResponse;
+//            }
 
-            for (String word : words) {
-                List<String> wordBaseForms = luceneMorph.getMorphInfo(word); //падает при поиске на латинице
+            for (String word : words) {//TODO: посмотреть документацию метода getMorphInfo() библиотеки luceneMorph
+                List<String> wordBaseForms = luceneMorph.getMorphInfo(word); //падает при поиске на латинице. Почему бы не брать первую форму слова и не проверять ее на отношение к частям речи?
                 if (wordBaseForms.stream().noneMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ"))) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
                     queryLemmasSet.add(luceneMorph.getNormalForms(word).get(0));
                 }
@@ -93,7 +93,7 @@ public class SearchServiceImpl implements SearchService {
                     }
                 }
                 if (lemmaDbListExisted.size() == queryLemmasSet.size()) {//Если все леммы из запроса для этого сайта есть в БД (а если хотя бы одного слова из запроса нет на сайте, не выдавать ничего). Уточнить логику
-                    List<Lemma> finishLemmaList = new ArrayList<>();//TODO: проверить правильную работу для запроса "купить по безналичному расчету"
+                    List<Lemma> finishLemmaList = new ArrayList<>();//TODO: проверить правильную работу для запроса "купить по безналичному расчету" DONE!
 
                     int quantityPagesByLemmas = lemmaDbListExisted.stream().mapToInt(l -> l.getPages().size()).sum();//сумма страниц для всех лемм из запроса
 
@@ -101,11 +101,10 @@ public class SearchServiceImpl implements SearchService {
 //                        if (100 * lemma.getPages().size() / quantityPagesByLemmas <= 100) { //отношение количества страниц для каждой леммы к сумме страниц для всех лемм запроса TODO: продумать алгоритм снижения выдачи результатов
 //                            finishLemmaList.add(lemma);
 //                        }
-                        if (100 * lemma.getPages().size() / quantityPagesBySite < 100) {//отношение количества страниц для каждой леммы к общему количеству страниц сайта
+                        if (100 * lemma.getPages().size() / quantityPagesBySite <= 100) //отношение количества страниц для каждой леммы к общему количеству страниц сайта
                             finishLemmaList.add(lemma);
-                        }
                     }
-                    sortedLemmaDbList = sortLemmasByFreq(finishLemmaList); //сортируем леммы в порядке частоты встречаемости
+                    sortedLemmaDbList = sortLemmasByFreq(finishLemmaList); //сортируем леммы в порядке увеличения частоты встречаемости
                 /*List<Lemma> lemmasToRemove = new ArrayList<>();
                 for (Lemma lemma : sortedLemmaDbList) {
                  if (lemma.getPages().size() <= 10000) { //если число страниц для данной леммы слишком большое TODO: продумать алгоритм снижения выдачи результатов
@@ -119,12 +118,12 @@ public class SearchServiceImpl implements SearchService {
                 lemmaDbListExisted = sortedLemmaDbList.stream().filter(lemmasToRemove::contains).toList();*/
 
                     for (Lemma lemma : sortedLemmaDbList) { //По первой, самой редкой лемме из списка, находим все страницы, на которых она встречается. Далее ищем соответствия следующей леммы из этого списка страниц
-                        if (pageByLemmaTotal.isEmpty()) {
+                        if (pageByLemmaTotal.isEmpty()) {//TODO: уточнить логику: после того, как список обнуляется леммой, которая в нем отсутствует, следующая лемма добавляет свои страницы в список, который выдается во фронт
                             pageByLemmaTotal.addAll(lemma.getPages());
                         } else {
                             pageByLemmaTotal.retainAll(lemma.getPages());//неправильно?
                             if (pageByLemmaTotal.isEmpty()) {
-                                return returnNothingFound();//Если в итоге не осталось ни одной страницы, то выводить пустой список
+                                break;//Если в итоге не осталось ни одной страницы, то прервать поиск по этому сайту
                             }
                         }
                     }
@@ -188,9 +187,9 @@ public class SearchServiceImpl implements SearchService {
     }
 
     SearchResponse returnNothingFound() {
-        searchResponse.setResult(true);
-        searchResponse.setCount(0);
-        searchResponse.setData(null);
+        searchResponse.setResult(false);
+//        searchResponse.setCount(0);
+//        searchResponse.setData(null);
         searchResponse.setError("Nothing found");
         return searchResponse;
     }
@@ -230,7 +229,8 @@ public class SearchServiceImpl implements SearchService {
     String getWordNormalForm(String word) {
         try {
             return luceneMorph.getNormalForms(word).get(0);
-        } catch (WrongCharaterException wce) {
+        } catch (Exception e) {//TODO:добавить обработку других прерываний
+            //e.printStackTrace();
             return word;
         }
     }

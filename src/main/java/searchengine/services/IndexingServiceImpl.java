@@ -112,32 +112,26 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     @Override
-    public ResponseMessage addPageForIndexing(String link) {
+    public ResponseMessage addPageForIndexing(String url) {
         Document document;
-        int consequense = 0;
         String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
-        for (searchengine.config.Site site : sites.getSites()) {
-            if (link.contains(site.getUrl())) {
-                consequense++;
-            }
+        if (sites.getSites().stream().noneMatch(s -> url.contains(s.getUrl()))) {
+            return sendResponse(false, "Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
         }
-//        if (consequense == 0) {
-//            return sendResponse(false, "Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
-//        }
         try {
 //            Thread.sleep(950);
 //            response = Jsoup.connect(link).execute();
             Thread.sleep(550);
-            document = Jsoup.connect(link).userAgent(userAgent).get();
+            document = Jsoup.connect(url).userAgent(userAgent).get();
         } catch (IOException | InterruptedException e) {
-            System.out.println("Broken link: " + link);
+            System.out.println("Broken link: " + url);
             return sendResponse(false, "Broken link");
         }
             /*response = Jsoup.connect(link)
                     .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:25.0) Gecko/20100101 Firefox/25.0 Chrome/51.0.2704.106 Safari/537.36 OPR/38.0.2220.41")
                     .referrer("google.com").timeout(1000).execute().bufferUp();
             document = response.parse();*/
-        Page page = pageRepository.findByPath(link);
+        Page page = pageRepository.findByPath(url);
         if (page == null) {
             page = new Page();
             site.setName("Test");
@@ -148,7 +142,7 @@ public class IndexingServiceImpl implements IndexingService {
             page.setSite(site);
         }
 
-        page.setPath(link);
+        page.setPath(url);
         page.setCode(document.connection().response().statusCode());
         page.setContent(document.text());
         int pageId = pageRepository.saveAndFlush(page).getId();

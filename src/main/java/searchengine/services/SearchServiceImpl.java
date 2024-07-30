@@ -35,33 +35,25 @@ public class SearchServiceImpl implements SearchService {
         }
     }
 
-    private final LemmaFinder lemmaFinder;
     private final LemmaRepository lemmaRepository;
     private final SiteRepository siteRepository;
     private final PageRepository pageRepository;
     private final IndexRepository indexRepository;
-    List<SearchData> data = new ArrayList<>();
-    SearchResponse searchResponse = new SearchResponse();
+    private List<SearchData> data = new ArrayList<>();
+    private SearchResponse searchResponse = new SearchResponse();
 
     @Override
     public SearchResponse getSearchResult(String query, int offset, int limit, String site) {
-        //TODO: оптимизировать так, чтобы при нажатии кнопки Show more выдавались следующие страницы без повторной обработки данных DONE!
+
         if (offset == 0) {
             data = new ArrayList<>();
             searchResponse = new SearchResponse();
             Set<String> queryLemmasSet = new HashSet<>();
             String[] words = query.toLowerCase(Locale.ROOT).replaceAll("[^а-я0-9\\s]", " ").trim().split("\\s+");
-//            if (words.length == 0) {
-//                searchResponse.setResult(false);
-//                searchResponse.setCount(0);
-//                searchResponse.setData(null);
-//                searchResponse.setError("Некорректный запрос");
-//                return searchResponse;
-//            }
 
             for (String word : words) {//TODO: посмотреть документацию метода getMorphInfo() библиотеки luceneMorph
-                List<String> wordBaseForms = luceneMorph.getMorphInfo(word); //падает при поиске на латинице. Почему бы не брать первую форму слова и не проверять ее на отношение к частям речи?
-                if (wordBaseForms.stream().noneMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ"))) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
+                String wordBaseForms = getWordMorphInfo(word); //падает при поиске на латинице. Почему бы не брать первую форму слова и не проверять ее на отношение к частям речи?
+                if (!wordBaseForms.contains("СОЮЗ") && !wordBaseForms.contains("МЕЖД") && !wordBaseForms.contains("ПРЕДЛ") && !wordBaseForms.contains(" ЧАСТ")) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
                     queryLemmasSet.add(luceneMorph.getNormalForms(word).get(0));
                 }
             }
@@ -98,10 +90,11 @@ public class SearchServiceImpl implements SearchService {
                     int quantityPagesByLemmas = lemmaDbListExisted.stream().mapToInt(l -> l.getPages().size()).sum();//сумма страниц для всех лемм из запроса
 
                     for (Lemma lemma : lemmaDbListExisted) {
+                        //int f = lemma.getFrequency();
 //                        if (100 * lemma.getPages().size() / quantityPagesByLemmas <= 100) { //отношение количества страниц для каждой леммы к сумме страниц для всех лемм запроса TODO: продумать алгоритм снижения выдачи результатов
 //                            finishLemmaList.add(lemma);
 //                        }
-                        if (100 * lemma.getPages().size() / quantityPagesBySite <= 100) //отношение количества страниц для каждой леммы к общему количеству страниц сайта
+                        if (100 * lemma.getFrequency() / quantityPagesBySite < 90) //отношение количества страниц для каждой леммы к общему количеству страниц сайта
                             finishLemmaList.add(lemma);
                     }
                     sortedLemmaDbList = sortLemmasByFreq(finishLemmaList); //сортируем леммы в порядке увеличения частоты встречаемости
@@ -131,9 +124,6 @@ public class SearchServiceImpl implements SearchService {
                     for (Page page : pageByLemmaTotal) { //для каждой страницы считаем суммарный rank лемм, найденных на этой странице
                         pageMapRel.put(page, calcPageRelevance(page, lemmaDbListExisted));
                     }
-//                    for (Map.Entry<Page, Float> entry : pageMapRel.entrySet()) {// test method
-//                        System.out.println(entry.getKey().getId() + " - " + entry.getValue());
-//                    }
                 }
             }
 
@@ -147,11 +137,11 @@ public class SearchServiceImpl implements SearchService {
             float maxRank;
             Optional<Float> maxRankOptional = sortedMap.values().stream().max(Float::compare);// находим максимальный rank
             maxRank = maxRankOptional.isPresent() ? maxRankOptional.get() : 1;  //если удается найти maxRank
-            System.out.println("MaxRank: " + maxRank);
+            //System.out.println("MaxRank: " + maxRank);
             for (Map.Entry<Page, Float> entry : sortedMap.entrySet()) {//считаем и сохраняем относительный rank
                 Page page = entry.getKey();
                 float value = entry.getValue() / maxRank;
-                System.out.println("Relative rank: " + value);
+                //System.out.println("Relative rank: " + value);
                 sortedMapRelRank.put(page, value);
             }
 
@@ -181,52 +171,41 @@ public class SearchServiceImpl implements SearchService {
                 limit = data.size() - offset;
             }
             searchResponse.setData(data.subList(offset, offset + limit));
-            //searchResponse.setError("");
             return searchResponse;
         }
     }
 
-    SearchResponse returnNothingFound() {
+    private SearchResponse returnNothingFound() {
         searchResponse.setResult(false);
-//        searchResponse.setCount(0);
-//        searchResponse.setData(null);
         searchResponse.setError("Nothing found");
         return searchResponse;
     }
 
-    List<Lemma> sortLemmasByFreq(List<Lemma> lemmaDbListExisted) {
+    private List<Lemma> sortLemmasByFreq(List<Lemma> lemmaDbListExisted) {
         Comparator<Lemma> compareByFreq = Comparator.comparing(Lemma::getFrequency);
         return lemmaDbListExisted.stream().sorted(compareByFreq).toList();
     }
 
-    float calcPageRelevance(Page page, List<Lemma> lemmaList) {
+    private float calcPageRelevance(Page page, List<Lemma> lemmaList) {
         List<Lemma> lemmaListByPage = page.getLemmas();
         float relevance = 0;
         for (Lemma lemma : lemmaListByPage) {
             if (lemmaList.contains(lemma)) {
                 relevance += indexRepository.findByPageIdAndLemmaId(page.getId(), lemma.getId()).getRank();
-                //System.out.println(lemma + " - " + indexRepository.findByPageIdAndLemmaId(page.getId(), lemma.getId()).getRank());
             }
-
         }
         return relevance;
     }
 
-    /*String getWordNormalForm(String word) {
-        String wordNormalForm = null;
+    private String getWordMorphInfo(String word) {
         try {
-            List<String> wordBaseForms = luceneMorph.getMorphInfo(word);
-            if (wordBaseForms.stream().noneMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ") || w.length() < 3)) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
-                wordNormalForm = luceneMorph.getNormalForms(word).get(0);
-            }
-            return wordNormalForm;
+            return luceneMorph.getMorphInfo(word).get(0);
         } catch (WrongCharaterException wce) {
             return word;
         }
+    }
 
-    }*/
-
-    String getWordNormalForm(String word) {
+    private String getWordNormalForm(String word) {
         try {
             return luceneMorph.getNormalForms(word).get(0);
         } catch (Exception e) {//TODO:добавить обработку других прерываний
@@ -235,7 +214,7 @@ public class SearchServiceImpl implements SearchService {
         }
     }
 
-    String getSnippet(List<Lemma> queryLemmasList, List<String> text) {
+    private String getSnippet(List<Lemma> queryLemmasList, List<String> text) {
         StringBuilder finalSnippet = new StringBuilder();
         Map<List<String>, Integer> snippetList = new HashMap<>();
         for (Lemma lemmaWord : queryLemmasList) {
@@ -287,8 +266,7 @@ public class SearchServiceImpl implements SearchService {
                         .trim()
                         .split("\\s+"))
                 .toList();
-        //String wholeSnippetText = topSnippetList.stream().map(String::valueOf).collect(Collectors.joining(" "));
-        //List<String> words = Arrays.stream(wholeSnippetText.toLowerCase(Locale.ROOT).replaceAll("[^а-я0-9\\s]", " ").trim().split("\\s+")).toList();
+
         List<String> queryWordsList = queryLemmasList.stream().map(Lemma::getLemma).toList();
         List<String> t = words.stream()//выделяем в тексте страницы жирным шрифтом все слова из поискового запроса
                 .map(word -> queryWordsList.contains(getWordNormalForm(word.toLowerCase(Locale.ROOT))) ? "<b>" + word + "</b>" : word)

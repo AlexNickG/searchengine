@@ -13,6 +13,7 @@ import searchengine.dto.search.SearchResponse;
 import searchengine.dto.statistics.ResponseMessage;
 import searchengine.dto.statistics.StatisticsResponse;
 import searchengine.services.IndexingService;
+import searchengine.services.IndexingServiceImpl;
 import searchengine.services.SearchService;
 import searchengine.services.StatisticsService;
 
@@ -54,7 +55,7 @@ public class ApiController {
 
     @DeleteMapping("/deleteAll")
     public void deleteAll() throws InterruptedException {
-        System.out.println(config.getUserAgent());
+//        System.out.println(config.getUserAgent());
         siteRepository.setForeignKeyCheckNull();
         indexRepository.deleteIndex();
         lemmaRepository.deleteLemmas();
@@ -66,6 +67,7 @@ public class ApiController {
         pageRepository.deleteAll();*/
         //siteRepository.deleteAll();
         //return new ResponseEntity<>(indexingService.stopIndexing(), HttpStatus.OK);
+        //indexingService.
         System.out.println("DB cleared");
     }
 

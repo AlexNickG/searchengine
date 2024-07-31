@@ -3,8 +3,11 @@ package searchengine.services;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
+import lombok.SneakyThrows;
+import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Service;
 import searchengine.Repositories.IndexRepository;
@@ -18,12 +21,17 @@ import searchengine.model.Site;
 import searchengine.model.Status;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.SocketTimeoutException;
+import java.net.URL;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 @Getter
 @Setter
@@ -47,6 +55,9 @@ public class IndexingServiceImpl implements IndexingService {
     public List<Runnable> threadList = new ArrayList<>();
     public List<ForkJoinTask<Void>> fjpList = new ArrayList<>();
     long start;
+    private String userAgent;
+    private String referrer;
+    private int timeout;
 
     @Override
     public ResponseMessage startIndexing() {
@@ -65,13 +76,7 @@ public class IndexingServiceImpl implements IndexingService {
         globalLinksSet.clear();
         stop = false;
         stopIndexing = false;
-        /*siteRepository.setForeignKeyCheckNull();
-        indexRepository.deleteIndex();
-        lemmaRepository.deleteLemmas();
-        pageRepository.deletePages();
-        siteRepository.deleteAllSites();
-        siteRepository.setForeignKeyCheckNotNull();*/
-        //siteRepository.deleteAll();
+        //clearDb();
         executor = Executors.newFixedThreadPool(sites.getSites().size());
         for (int i = 0; i < sites.getSites().size(); i++) {
             threadList.add(new StartIndexing(i)); //How to start threads in ExecutorService?
@@ -114,7 +119,6 @@ public class IndexingServiceImpl implements IndexingService {
     @Override
     public ResponseMessage addPageForIndexing(String url) {
         Document document;
-        String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
         if (sites.getSites().stream().noneMatch(s -> url.contains(s.getUrl()))) {
             return sendResponse(false, "Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
         }
@@ -151,7 +155,7 @@ public class IndexingServiceImpl implements IndexingService {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
-        return sendResponse(true, null);
+        return sendResponse(true);
     }
 
     public ResponseMessage sendResponse(boolean result, String message) {
@@ -161,6 +165,11 @@ public class IndexingServiceImpl implements IndexingService {
         return responseMessage;
     }
 
+    public ResponseMessage sendResponse(boolean result) {
+        ResponseMessage responseMessage = new ResponseMessage();
+        responseMessage.setResult(result);
+        return responseMessage;
+    }
 
     @RequiredArgsConstructor
     public class StartIndexing implements Runnable {
@@ -178,12 +187,12 @@ public class IndexingServiceImpl implements IndexingService {
             siteRepository.saveAndFlush(site);
             ForkJoinPool forkJoinPool = new ForkJoinPool();
             globalLinksSet.add(link);
-            Indexing indexing = new Indexing(link, site, siteRepository, pageRepository, lemmaRepository, lemmaFinder);
+            Indexing indexing = new Indexing(link, site);
             fjpList.add(indexing);
             ForkJoinTask<Void> task = forkJoinPool.submit(indexing);
 
             while (true) {
-                if (forkJoinPool.isTerminating()){
+                if (forkJoinPool.isTerminating()) {
                     System.out.println("FJP is terminating");
                 }
                 if (task.isCompletedAbnormally()) { //TODO: what is abnormally?
@@ -219,4 +228,130 @@ public class IndexingServiceImpl implements IndexingService {
             }
         }
     }
+
+    @Getter
+    @Setter
+    public class Indexing extends RecursiveAction {
+        //private PageRepository pageRepository;
+        //private SiteRepository siteRepository;
+        //private LemmaRepository lemmaRepository;
+        //private LemmaFinder lemmaFinder;
+        private Site site;
+        private String link;
+        private List<Indexing> taskList = new ArrayList<>();
+
+        public Indexing(String link, Site site) {
+            this.link = link;
+            this.site = site;
+        }
+
+        @Override
+        public boolean cancel(boolean c) {
+            taskList.forEach(t -> t.cancel(true));
+            return super.cancel(true);
+        }
+
+        @SneakyThrows
+        @Override
+        protected void compute() {
+            Thread.sleep(timeout);
+            if (IndexingServiceImpl.stop) {
+                cancel(true);
+            }
+
+            Document document = connectToPageAndSaveIt(link, site);
+//            int statusCode;
+//            System.out.println("Thread" + Thread.currentThread().getName() + "connect to: "+ link);
+//            Connection connection = Jsoup.connect(link).ignoreHttpErrors(true);
+//            try {
+//                document = connection.userAgent(userAgent).referrer(referrer).get();
+//                statusCode = connection.response().statusCode();
+//            } catch (SocketTimeoutException ste) {
+//                statusCode = 494;
+//            }
+//
+//
+//            String content = document.toString();
+//            if (String.valueOf(statusCode).startsWith("4") || String.valueOf(statusCode).startsWith("5")) {
+//                content = document.toString();
+//            }
+//            Page page = new Page();
+//            page.setSite(site);
+//            page.setPath(new URL(link).getPath());
+//            page.setCode(statusCode);
+//            page.setContent(content);
+//            int pageId = pageRepository.saveAndFlush(page).getId();
+//            lemmaFinder.collectLemmas(pageId);//why does the location where this method is called have no effect?
+//            site.setStatusTime(LocalDateTime.now());
+//            siteRepository.saveAndFlush(site);
+if(document == null) {
+    return;
+}
+            Set<String> linksSet = document.select("a").stream()
+                    .map(e -> e.attr("abs:href"))
+                    .filter(e -> e.contains(site.getUrl())
+                            && !e.contains("#") //TODO: add to config
+                            && !e.endsWith(".jpg")
+                            && !e.endsWith(".pdf")
+                            && !e.endsWith(".png")
+                            && !e.contains("?"))
+                    .collect(Collectors.toSet());
+
+            if (IndexingServiceImpl.stop) {
+                System.out.println("cancelled");
+                linksSet.clear();
+            }
+
+            linksSet.removeAll(IndexingServiceImpl.globalLinksSet);
+            IndexingServiceImpl.globalLinksSet.addAll(linksSet);
+
+            System.out.println("linksSet size: " + linksSet.size());
+            for (String subLink : linksSet) {
+                Indexing parse = new Indexing(subLink, site);
+                taskList.add(parse);
+            }
+            ForkJoinTask.invokeAll(taskList);
+
+            System.out.println(Thread.currentThread().getName() + " isCancelled: " + isCancelled());
+            System.out.println(Thread.currentThread().getName() + " isCompletedAbnormally: " + isCompletedAbnormally());
+            //System.out.println("Set size: " + IndexingServiceImpl.globalLinksSet.size());
+            taskList.forEach(Indexing::join);
+        }
+    }
+
+    public Document connectToPageAndSaveIt(String link, Site site) throws InterruptedException, MalformedURLException, SQLException {
+        Thread.sleep(timeout);
+        Connection connection = Jsoup.connect(link).ignoreHttpErrors(true);
+        Document document;
+        String content;
+        try {
+            document = connection.userAgent(userAgent).referrer(referrer).get();
+            content = document.toString();
+        } catch (IOException e) {
+            document = null;
+            content = "";
+        }
+        int statusCode = connection.response().statusCode();
+
+
+        Page page = new Page();
+        page.setSite(site);
+        page.setPath(new URL(link).getPath());
+        page.setCode(statusCode);
+        page.setContent(content);
+        int pageId = pageRepository.saveAndFlush(page).getId();
+        lemmaFinder.collectLemmas(pageId);//why does the location where this method is called have no effect?
+        site.setStatusTime(LocalDateTime.now());
+        siteRepository.saveAndFlush(site);
+        return document;
+    }
+
+    public void clearDb() {
+        siteRepository.setForeignKeyCheckNull();
+        indexRepository.deleteIndex();
+        lemmaRepository.deleteLemmas();
+        pageRepository.deletePages();
+        siteRepository.deleteAllSites();
+        siteRepository.setForeignKeyCheckNotNull();
+        }
 }

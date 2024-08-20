@@ -197,7 +197,7 @@ public class IndexingServiceImpl implements IndexingService {
                 }
                 if (task.isCompletedAbnormally()) { //TODO: what is abnormally?
                     System.out.println("isTerminating: " + forkJoinPool.isTerminating());
-                    task.getException().printStackTrace();
+                    //task.getException().printStackTrace();
                     site.setUrl(link);
                     site.setStatus(Status.FAILED);
                     site.setLastError("Индексация остановлена пользователем");
@@ -324,14 +324,17 @@ if(document == null) {
         Connection connection = Jsoup.connect(link).ignoreHttpErrors(true);
         Document document;
         String content;
+        int statusCode;
         try {
             document = connection.userAgent(userAgent).referrer(referrer).get();
             content = document.toString();
+            statusCode = connection.response().statusCode();
         } catch (IOException e) {
             document = null;
             content = "";
+            statusCode = 404; //if server can't answer
         }
-        int statusCode = connection.response().statusCode();
+
 
 
         Page page = new Page();

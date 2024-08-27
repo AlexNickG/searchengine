@@ -5,9 +5,11 @@ import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import searchengine.Repositories.IndexRepository;
 import searchengine.Repositories.LemmaRepository;
 import searchengine.Repositories.PageRepository;
+import searchengine.exceptions.WordNotFitToDictionaryException;
 import searchengine.model.Index;
 import searchengine.model.Lemma;
 import searchengine.model.Page;
@@ -37,10 +39,16 @@ public class LemmaFinder { //нужно ли создавать экземпля
 
     public void collectLemmas(int pageId) throws SQLException {
         HashMap<String, Integer> lemmasMap = new HashMap<>();
-        Page page = pageRepository.findById(pageId).orElseThrow();
+        Page page = pageRepository.findById(pageId).orElseThrow();//зачем бросать exception?
         String[] words = getText(page).toLowerCase(Locale.ROOT).replaceAll("[^а-я\\s]", " ").trim().split("\\s+"); //TODO: optimize it
 
         for (String word : words) {
+            if (!luceneMorph.checkString(word)) {
+                // если слово не подходит для морфологического анализа - бросаем исключение
+                // такое исключение можно перехватить внутри Spring и создать специальный ответ
+                // смотри exceptions/DefaultAdvice.java
+                throw new WordNotFitToDictionaryException(word);
+            }
             List<String> wordBaseForms = luceneMorph.getMorphInfo(word);
             if (wordBaseForms.stream().anyMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ") || getLemma(word).length() < 3)) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
                 //System.out.println("match");
@@ -60,16 +68,19 @@ public class LemmaFinder { //нужно ли создавать экземпля
         return luceneMorph.getNormalForms(word).get(0);
     }
 
+    //@Transactional
     public void saveLemmas(HashMap<String, Integer> lemmasMap, Page page) throws SQLException { //TODO: продумать сохранение лемм и индексов
 
 
         int lemmaId;
         Lemma dbLemma;
         List<Lemma> dbLemmaS;
+
         for (Map.Entry<String, Integer> entry : lemmasMap.entrySet()) {
 
             Index indexEntity = new Index();
             synchronized (lemmaRepository) {
+                //long start = System.currentTimeMillis();
                 dbLemma = lemmaRepository.findByLemmaAndSite_Id(entry.getKey(), page.getSite().getId());
                 if (dbLemma != null) {
                     //dbLemma = dbLemmaS.get(0);
@@ -84,7 +95,8 @@ public class LemmaFinder { //нужно ли создавать экземпля
                     dbLemma.setLemma(entry.getKey());
                     dbLemma.setFrequency(1);
                 }
-                lemmaId = lemmaRepository.saveAndFlush(dbLemma).getId();
+                lemmaId = lemmaRepository.save(dbLemma).getId();
+                //System.out.println("Save lemma duration: " + (System.currentTimeMillis() - start));
             }
             //indexMultiInsertQuery(lemmaId, page.getId(), entry.getValue());
             indexEntity.setLemmaId(lemmaId);
@@ -92,12 +104,13 @@ public class LemmaFinder { //нужно ли создавать экземпля
             indexEntity.setRank(entry.getValue());
             indexSet.add(indexEntity);
         }
+
         //indexRepository.executeMultiInsert(insertQuery.toString());
         //indexRepository.saveAllAndFlush(indexSet);
     }
 
     public void saveIndex() {
-        indexRepository.saveAllAndFlush(indexSet);
+        indexRepository.saveAll(indexSet);
     }
     private String getText(Page page) {
         return page.getContent();

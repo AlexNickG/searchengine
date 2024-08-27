@@ -52,7 +52,7 @@ public class SearchServiceImpl implements SearchService {
             String[] words = query.toLowerCase(Locale.ROOT).replaceAll("[^а-я0-9\\s]", " ").trim().split("\\s+");
 
             for (String word : words) {//TODO: посмотреть документацию метода getMorphInfo() библиотеки luceneMorph
-                String wordBaseForms = getWordMorphInfo(word); //падает при поиске на латинице. Почему бы не брать первую форму слова и не проверять ее на отношение к частям речи?
+                String wordBaseForms = getWordMorphInfo(word); //Падает при поиске на латинице. Почему бы не брать первую форму слова и не проверять ее на отношение к частям речи?
                 if (!wordBaseForms.contains("СОЮЗ") && !wordBaseForms.contains("МЕЖД") && !wordBaseForms.contains("ПРЕДЛ") && !wordBaseForms.contains(" ЧАСТ")) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
                     queryLemmasSet.add(luceneMorph.getNormalForms(word).get(0));
                 }

@@ -9,6 +9,7 @@ import searchengine.model.Lemma;
 import searchengine.model.Page;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface LemmaRepository extends JpaRepository<Lemma, Integer> {

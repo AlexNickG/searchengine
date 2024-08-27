@@ -19,7 +19,7 @@ public interface PageRepository extends JpaRepository<Page, Integer> {
 
 //    @Transactional
 //    @Query(value = "select * from search_engine.page where path like ?1", nativeQuery = true)
-    Page findByPath(String link);
+List<Page> findByPath(String link);
 
     List<Page> findBySite_id(int site_id);
 }

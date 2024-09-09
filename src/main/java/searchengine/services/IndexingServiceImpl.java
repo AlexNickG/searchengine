@@ -75,7 +75,7 @@ public class IndexingServiceImpl implements IndexingService {
         globalLinksSet.clear();
         stop = false;
         stopIndexing = false;
-        //clearDb();
+        clearDb();
         executor = Executors.newFixedThreadPool(sites.getSites().size());
         for (int i = 0; i < sites.getSites().size(); i++) {
             threadList.add(new StartIndexing(i)); //How to start threads in ExecutorService?
@@ -224,7 +224,7 @@ public class IndexingServiceImpl implements IndexingService {
                 }
                 if (task.isCompletedAbnormally()) { //TODO: what is abnormally?
                     System.out.println("isTerminating: " + forkJoinPool.isTerminating());
-                    task.getException().printStackTrace();
+                    //task.getException().printStackTrace();
                     site.setUrl(link);
                     site.setStatus(Status.FAILED);
                     site.setLastError("Индексация остановлена пользователем");
@@ -232,7 +232,7 @@ public class IndexingServiceImpl implements IndexingService {
                     site.setStatusTime(LocalDateTime.now());
                     siteRepository.saveAndFlush(site); //save vs saveAndFlush
                     forkJoinPool.shutdown();
-                    System.out.println("the task was cancelled");
+                    System.out.println("the task was cancelled - " + LocalDateTime.now());
                     //stopIndexing = true;//it stops all threads
                     break;
                 }

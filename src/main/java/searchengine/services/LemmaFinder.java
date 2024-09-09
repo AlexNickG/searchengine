@@ -1,9 +1,12 @@
 package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.Repositories.IndexRepository;
@@ -21,12 +24,14 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class LemmaFinder { //нужно ли создавать экземпляр класса? или использовать статические методы?
     private final LemmaRepository lemmaRepository;
     private final IndexRepository indexRepository;
     private LuceneMorphology luceneMorph;
     private final PageRepository pageRepository;
     private static StringBuilder insertQuery = new StringBuilder();
+    //private final Logger logger = LoggerFactory.getLogger(LemmaFinder.class);
     Set<Index> indexSet = ConcurrentHashMap.newKeySet();
     {
         try {
@@ -35,7 +40,12 @@ public class LemmaFinder { //нужно ли создавать экземпля
             throw new RuntimeException(e);
         }
         System.out.println("Tread name: " + Thread.currentThread().getName());
+
+        log.debug("Debug message is written in stderrd.log");
+        log.error("Error message is written in stderr.log");
+        log.info("Info message is written in stdinfo.log");
     }
+
 
     public void collectLemmas(int pageId) throws SQLException {
         HashMap<String, Integer> lemmasMap = new HashMap<>();
@@ -47,8 +57,11 @@ public class LemmaFinder { //нужно ли создавать экземпля
                 // если слово не подходит для морфологического анализа - бросаем исключение
                 // такое исключение можно перехватить внутри Spring и создать специальный ответ
                 // смотри exceptions/DefaultAdvice.java
+                log.info("bad word {}", word);
                 throw new WordNotFitToDictionaryException(word);
             }
+            log.info("good word {}", word);
+//            System.out.println("-" + word + "-");
             List<String> wordBaseForms = luceneMorph.getMorphInfo(word);
             if (wordBaseForms.stream().anyMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ") || getLemma(word).length() < 3)) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
                 //System.out.println("match");

@@ -31,7 +31,6 @@ public class LemmaFinder { //нужно ли создавать экземпля
     private LuceneMorphology luceneMorph;
     private final PageRepository pageRepository;
     private static StringBuilder insertQuery = new StringBuilder();
-    //private final Logger logger = LoggerFactory.getLogger(LemmaFinder.class);
     Set<Index> indexSet = ConcurrentHashMap.newKeySet();
     {
         try {
@@ -40,17 +39,13 @@ public class LemmaFinder { //нужно ли создавать экземпля
             throw new RuntimeException(e);
         }
         System.out.println("Tread name: " + Thread.currentThread().getName());
-
-        log.debug("Debug message is written in stderrd.log");
-        log.error("Error message is written in stderr.log");
-        log.info("Info message is written in stdinfo.log");
     }
-
 
     public void collectLemmas(int pageId) throws SQLException {
         HashMap<String, Integer> lemmasMap = new HashMap<>();
         Page page = pageRepository.findById(pageId).orElseThrow();//зачем бросать exception?
         String[] words = getText(page).toLowerCase(Locale.ROOT).replaceAll("[^а-я\\s]", " ").trim().split("\\s+"); //TODO: optimize it
+        List<String> wordBaseForms;
 
         for (String word : words) {
             if (!luceneMorph.checkString(word)) {
@@ -60,9 +55,10 @@ public class LemmaFinder { //нужно ли создавать экземпля
                 log.info("bad word {}", word);
                 throw new WordNotFitToDictionaryException(word);
             }
+            wordBaseForms = luceneMorph.getMorphInfo(word);
             log.info("good word {}", word);
 //            System.out.println("-" + word + "-");
-            List<String> wordBaseForms = luceneMorph.getMorphInfo(word);
+            wordBaseForms = luceneMorph.getMorphInfo(word);
             if (wordBaseForms.stream().anyMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ") || getLemma(word).length() < 3)) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
                 //System.out.println("match");
             } else {
@@ -92,8 +88,9 @@ public class LemmaFinder { //нужно ли создавать экземпля
         for (Map.Entry<String, Integer> entry : lemmasMap.entrySet()) {
 
             Index indexEntity = new Index();
+            long start = System.currentTimeMillis();
             synchronized (lemmaRepository) {
-                //long start = System.currentTimeMillis();
+
                 dbLemma = lemmaRepository.findByLemmaAndSite_Id(entry.getKey(), page.getSite().getId());
                 if (dbLemma != null) {
                     //dbLemma = dbLemmaS.get(0);
@@ -111,6 +108,7 @@ public class LemmaFinder { //нужно ли создавать экземпля
                 lemmaId = lemmaRepository.save(dbLemma).getId();
                 //System.out.println("Save lemma duration: " + (System.currentTimeMillis() - start));
             }
+            log.info("Save lemma duration: {}", (System.currentTimeMillis() - start));
             //indexMultiInsertQuery(lemmaId, page.getId(), entry.getValue());
             indexEntity.setLemmaId(lemmaId);
             indexEntity.setPageId(page.getId());

@@ -4,9 +4,12 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Service;
@@ -32,6 +35,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Getter
 @Setter
 @Service
@@ -203,6 +207,7 @@ public class IndexingServiceImpl implements IndexingService {
 
         private final int siteNumber;
 
+
         @Override
         public void run() {
             String link = sites.getSites().get(siteNumber).getUrl();
@@ -224,7 +229,7 @@ public class IndexingServiceImpl implements IndexingService {
                 }
                 if (task.isCompletedAbnormally()) { //TODO: what is abnormally?
                     System.out.println("isTerminating: " + forkJoinPool.isTerminating());
-                    //task.getException().printStackTrace();
+                    log.error("Exception!: {}", task.getException().getMessage(), task.getException());
                     site.setUrl(link);
                     site.setStatus(Status.FAILED);
                     site.setLastError("Индексация остановлена пользователем");
@@ -238,7 +243,7 @@ public class IndexingServiceImpl implements IndexingService {
                 }
                 if (task.isCompletedNormally()) {
                     //indexRepository.saveAllAndFlush(lemmaFinder.indexSet);
-                    lemmaFinder.saveIndex();
+                    lemmaFinder.saveIndex(); //use multiinsert
                     //List<Page> pageList = pageRepository.findAll();
                     //pageList.forEach(lemmaFinder::collectLemmas);
                     site.setUrl(link);

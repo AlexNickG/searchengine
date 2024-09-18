@@ -1,5 +1,6 @@
 package searchengine.services;
 
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.lucene.morphology.LuceneMorphology;
@@ -25,6 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@Getter
 public class LemmaFinder { //нужно ли создавать экземпляр класса? или использовать статические методы?
     private final LemmaRepository lemmaRepository;
     private final IndexRepository indexRepository;
@@ -48,6 +50,10 @@ public class LemmaFinder { //нужно ли создавать экземпля
         List<String> wordBaseForms;
 
         for (String word : words) {
+            if (word.isEmpty()) {
+                //log.info("Empty word");
+                continue;
+            }
             if (!luceneMorph.checkString(word)) {
                 // если слово не подходит для морфологического анализа - бросаем исключение
                 // такое исключение можно перехватить внутри Spring и создать специальный ответ
@@ -55,8 +61,8 @@ public class LemmaFinder { //нужно ли создавать экземпля
                 log.info("bad word {}", word);
                 throw new WordNotFitToDictionaryException(word);
             }
-            wordBaseForms = luceneMorph.getMorphInfo(word);
-            log.info("good word {}", word);
+            //wordBaseForms = luceneMorph.getMorphInfo(word);
+            //log.info("good word {}", word);
 //            System.out.println("-" + word + "-");
             wordBaseForms = luceneMorph.getMorphInfo(word);
             if (wordBaseForms.stream().anyMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ") || getLemma(word).length() < 3)) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
@@ -77,7 +83,7 @@ public class LemmaFinder { //нужно ли создавать экземпля
         return luceneMorph.getNormalForms(word).get(0);
     }
 
-    //@Transactional
+    @Transactional
     public void saveLemmas(HashMap<String, Integer> lemmasMap, Page page) throws SQLException { //TODO: продумать сохранение лемм и индексов
 
 
@@ -88,7 +94,7 @@ public class LemmaFinder { //нужно ли создавать экземпля
         for (Map.Entry<String, Integer> entry : lemmasMap.entrySet()) {
 
             Index indexEntity = new Index();
-            long start = System.currentTimeMillis();
+            //long start = System.currentTimeMillis();
             synchronized (lemmaRepository) {
 
                 dbLemma = lemmaRepository.findByLemmaAndSite_Id(entry.getKey(), page.getSite().getId());
@@ -105,15 +111,17 @@ public class LemmaFinder { //нужно ли создавать экземпля
                     dbLemma.setLemma(entry.getKey());
                     dbLemma.setFrequency(1);
                 }
+                //log.info("lemma word: {}", entry.getKey());
                 lemmaId = lemmaRepository.save(dbLemma).getId();
                 //System.out.println("Save lemma duration: " + (System.currentTimeMillis() - start));
+                indexEntity.setLemmaId(lemmaId);
+                indexEntity.setPageId(page.getId());
+                indexEntity.setRank(entry.getValue());
+                indexSet.add(indexEntity);
             }
-            log.info("Save lemma duration: {}", (System.currentTimeMillis() - start));
+            //log.info("Save lemma duration: {}", (System.currentTimeMillis() - start));
             //indexMultiInsertQuery(lemmaId, page.getId(), entry.getValue());
-            indexEntity.setLemmaId(lemmaId);
-            indexEntity.setPageId(page.getId());
-            indexEntity.setRank(entry.getValue());
-            indexSet.add(indexEntity);
+
         }
 
         //indexRepository.executeMultiInsert(insertQuery.toString());

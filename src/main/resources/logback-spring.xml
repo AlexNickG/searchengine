@@ -26,16 +26,16 @@
         </filter>
     </appender>
 
-    <appender name="STD_DEBUG_ROLLING_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <!--appender name="STD_DEBUG_ROLLING_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${LOGS}/std-debug.log</file>
         <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
             <Pattern>%d %p %C{1} [%t] %m%n</Pattern>
-            <!--pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern-->
-        </encoder>
+            <!-pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern-->
+        <!--/encoder>
         <rollingPolicy
                 class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <!-- rollover daily and when the file reaches 10 MegaBytes -->
-            <fileNamePattern>${LOGS}/archived/std-debug-%d{yyyy-MM-dd}.%i.log
+            <!- rollover daily and when the file reaches 10 MegaBytes -->
+            <!--fileNamePattern>${LOGS}/archived/std-debug-%d{yyyy-MM-dd}.%i.log
             </fileNamePattern>
             <timeBasedFileNamingAndTriggeringPolicy
                     class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
@@ -47,7 +47,7 @@
             <onMatch>ACCEPT</onMatch>
             <onMismatch>DENY</onMismatch>
         </filter>
-    </appender>
+    </appender-->
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <layout class="ch.qos.logback.classic.PatternLayout">
             <Pattern>
@@ -67,7 +67,7 @@
         <appender-ref ref="STDOUT_FILE" level="info"/>
         <appender-ref ref="STDERR_FILE" level="error"/>
 
-        <appender-ref ref="STD_DEBUG_ROLLING_FILE" level="debug"/>
+        <!--appender-ref ref="STD_DEBUG_ROLLING_FILE" level="debug"/-->
         <appender-ref ref="STDOUT" level="info"/>
     </root>
 </configuration>

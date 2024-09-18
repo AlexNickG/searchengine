@@ -3,14 +3,10 @@ package searchengine.services;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Service;
 import searchengine.Repositories.IndexRepository;
@@ -25,7 +21,6 @@ import searchengine.model.Status;
 
 import java.io.IOException;
 import java.net.MalformedURLException;
-import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
@@ -55,8 +50,9 @@ public class IndexingServiceImpl implements IndexingService {
     public static ConcurrentSkipListSet<String> globalLinksSet = new ConcurrentSkipListSet<>();
     public static volatile boolean stopIndexing = false;
     public static volatile boolean stop;
-    public List<Runnable> threadList = new ArrayList<>();
+    public List<Callable<Integer>> threadList = new ArrayList<>();
     public List<ForkJoinTask<Void>> fjpList = new ArrayList<>();
+    private List<Future<Integer>> futureList = new ArrayList<>();
     long start;
     private String userAgent;
     private String referrer;
@@ -82,10 +78,13 @@ public class IndexingServiceImpl implements IndexingService {
         clearDb();
         executor = Executors.newFixedThreadPool(sites.getSites().size());
         for (int i = 0; i < sites.getSites().size(); i++) {
-            threadList.add(new StartIndexing(i)); //How to start threads in ExecutorService?
+            threadList.add( new StartIndexing(i)); //How to start threads in ExecutorService?
         }
 
-        threadList.forEach(executor::execute);
+        for (Callable<Integer> thread: threadList) {
+            Future<Integer> futureThread = executor.submit(thread);
+            futureList.add(futureThread);
+        }
         System.out.println("Started threads: " + threadList.size());
         //
         return sendResponse(true, "");
@@ -203,13 +202,13 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     @RequiredArgsConstructor
-    public class StartIndexing implements Runnable {
+    public class StartIndexing implements Callable<Integer> {
 
         private final int siteNumber;
 
 
         @Override
-        public void run() {
+        public Integer call() {
             String link = sites.getSites().get(siteNumber).getUrl();
             Site site = new Site();
             site.setUrl(link);
@@ -228,7 +227,7 @@ public class IndexingServiceImpl implements IndexingService {
                     System.out.println("FJP is terminating");
                 }
                 if (task.isCompletedAbnormally()) { //TODO: what is abnormally?
-                    System.out.println("isTerminating: " + forkJoinPool.isTerminating());
+                    log.info("isTerminating: {}", forkJoinPool.isTerminating());
                     log.error("Exception!: {}", task.getException().getMessage(), task.getException());
                     site.setUrl(link);
                     site.setStatus(Status.FAILED);
@@ -236,14 +235,19 @@ public class IndexingServiceImpl implements IndexingService {
                     site.setName(sites.getSites().get(siteNumber).getName());
                     site.setStatusTime(LocalDateTime.now());
                     siteRepository.saveAndFlush(site); //save vs saveAndFlush
-                    forkJoinPool.shutdown();
-                    System.out.println("the task was cancelled - " + LocalDateTime.now());
+                    //forkJoinPool.shutdown();
+                    log.info("the task was cancelled");
                     //stopIndexing = true;//it stops all threads
                     break;
                 }
                 if (task.isCompletedNormally()) {
+                    //log.error("Exception task.isCompletedNormally!: {}", task.getException().getMessage(), task.getException());
                     //indexRepository.saveAllAndFlush(lemmaFinder.indexSet);
-                    lemmaFinder.saveIndex(); //use multiinsert
+                    log.info("saveIndex starts!");
+                    log.info("indexSet size = {}", lemmaFinder.getIndexSet().size());
+                    System.err.println("System.err.println");
+                    System.out.println("System.out.println");
+                    //lemmaFinder.saveIndex(); //use multiinsert
                     //List<Page> pageList = pageRepository.findAll();
                     //pageList.forEach(lemmaFinder::collectLemmas);
                     site.setUrl(link);
@@ -251,13 +255,13 @@ public class IndexingServiceImpl implements IndexingService {
                     site.setName(sites.getSites().get(siteNumber).getName());
                     site.setStatusTime(LocalDateTime.now());
                     siteRepository.save(site);
-                    forkJoinPool.shutdown();
-                    System.out.println("The task was done");
-                    System.out.println("It's took " + (System.currentTimeMillis() - start) / 1000 + " seconds");
+                    //forkJoinPool.shutdown();
+                    log.info("The task was done \n It's took {} seconds", (System.currentTimeMillis() - start) / 1000);
                     //stopIndexing = true;
                     break;
                 }
             }
+            return 1;
         }
     }
 

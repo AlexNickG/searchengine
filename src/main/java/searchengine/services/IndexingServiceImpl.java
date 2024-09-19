@@ -26,6 +26,7 @@ import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -53,6 +54,7 @@ public class IndexingServiceImpl implements IndexingService {
     public List<Callable<Integer>> threadList = new ArrayList<>();
     public List<ForkJoinTask<Void>> fjpList = new ArrayList<>();
     private List<Future<Integer>> futureList = new ArrayList<>();
+    private static volatile AtomicInteger counter = new AtomicInteger(0);
     long start;
     private String userAgent;
     private String referrer;
@@ -222,7 +224,7 @@ public class IndexingServiceImpl implements IndexingService {
             fjpList.add(indexing);
             ForkJoinTask<Void> task = forkJoinPool.submit(indexing);
 
-            while (true) {
+            do {
                 if (forkJoinPool.isTerminating()) {
                     System.out.println("FJP is terminating");
                 }
@@ -235,18 +237,18 @@ public class IndexingServiceImpl implements IndexingService {
                     site.setName(sites.getSites().get(siteNumber).getName());
                     site.setStatusTime(LocalDateTime.now());
                     siteRepository.saveAndFlush(site); //save vs saveAndFlush
-                    //forkJoinPool.shutdown();
+                    forkJoinPool.shutdown();
                     log.info("the task was cancelled");
                     //stopIndexing = true;//it stops all threads
-                    break;
+                    //break;
                 }
                 if (task.isCompletedNormally()) {
                     //log.error("Exception task.isCompletedNormally!: {}", task.getException().getMessage(), task.getException());
                     //indexRepository.saveAllAndFlush(lemmaFinder.indexSet);
-                    log.info("saveIndex starts!");
+                    //log.info("saveIndex starts!");
                     log.info("indexSet size = {}", lemmaFinder.getIndexSet().size());
-                    System.err.println("System.err.println");
-                    System.out.println("System.out.println");
+                    //System.err.println("System.err.println");
+                    //System.out.println("System.out.println");
                     //lemmaFinder.saveIndex(); //use multiinsert
                     //List<Page> pageList = pageRepository.findAll();
                     //pageList.forEach(lemmaFinder::collectLemmas);
@@ -255,11 +257,18 @@ public class IndexingServiceImpl implements IndexingService {
                     site.setName(sites.getSites().get(siteNumber).getName());
                     site.setStatusTime(LocalDateTime.now());
                     siteRepository.save(site);
-                    //forkJoinPool.shutdown();
+                    forkJoinPool.shutdown();
                     log.info("The task was done \n It's took {} seconds", (System.currentTimeMillis() - start) / 1000);
+                    log.info("Task is done: {}", task.isDone());
                     //stopIndexing = true;
-                    break;
+                    //break;
                 }
+            } while (!task.isDone());
+            log.info("Trying to increment counter");
+            counter.addAndGet(1);
+            log.info("Counter: {}", counter);
+            if (counter.get() == sites.getSites().size()) {
+                lemmaFinder.saveIndex();
             }
             return 1;
         }

@@ -56,6 +56,7 @@ public class IndexingServiceImpl implements IndexingService {
     private List<Future<Integer>> futureList = new ArrayList<>();
     private static volatile AtomicInteger counter = new AtomicInteger(0);
     long start;
+    long start2;
     private String userAgent;
     private String referrer;
     private int timeout;
@@ -77,7 +78,7 @@ public class IndexingServiceImpl implements IndexingService {
         globalLinksSet.clear();
         stop = false;
         stopIndexing = false;
-        clearDb();
+        //clearDb();
         executor = Executors.newFixedThreadPool(sites.getSites().size());
         for (int i = 0; i < sites.getSites().size(); i++) {
             threadList.add( new StartIndexing(i)); //How to start threads in ExecutorService?
@@ -258,8 +259,8 @@ public class IndexingServiceImpl implements IndexingService {
                     site.setStatusTime(LocalDateTime.now());
                     siteRepository.save(site);
                     forkJoinPool.shutdown();
-                    log.info("The task was done \n It's took {} seconds", (System.currentTimeMillis() - start) / 1000);
-                    log.info("Task is done: {}", task.isDone());
+                    //log.info("The task was done \n It's took {} seconds", (System.currentTimeMillis() - start) / 1000);
+                    //log.info("Task is done: {}", task.isDone());
                     //stopIndexing = true;
                     //break;
                 }
@@ -268,7 +269,10 @@ public class IndexingServiceImpl implements IndexingService {
             counter.addAndGet(1);
             log.info("Counter: {}", counter);
             if (counter.get() == sites.getSites().size()) {
+                start2 = System.currentTimeMillis();
                 lemmaFinder.saveIndex();
+                log.info("Index saving took {} seconds", (System.currentTimeMillis() - start2) / 1000);
+                log.info("Parsing took {} seconds", (System.currentTimeMillis() - start) / 1000);
             }
             return 1;
         }

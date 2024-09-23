@@ -4,8 +4,11 @@ server:
 spring:
   datasource:
     username: root
+    #username: postgres
     password: pass
+    #url: jdbc:postgresql://localhost:5432/searchengine
     url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true&reWriteBatchedInserts=true
+    #driver-class-name: org.postgresql.Driver
   jpa:
     properties:
       hibernate:
@@ -16,11 +19,11 @@ spring:
 
       dialect: org.hibernate.dialect.MySQL8Dialect
     hibernate:
-      ddl-auto: update
-    show-sql: false
+      ddl-auto: none
+    show-sql: true
   liquibase:
      change-log: classpath:db/changelog/db.changelog-master.xml
-     enabled: false
+     enabled: true
      drop-first: false
 
   output:

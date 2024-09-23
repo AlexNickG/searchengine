@@ -1,5 +1,6 @@
 package searchengine.model;
 
+//import javax.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -15,9 +16,10 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 public class Site {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private int id;
+    private Integer id;
     //@Column(columnDefinition = "enum NOT NULL") // с этой записью таблица не создается
     @Enumerated(EnumType.STRING)
     @Column(columnDefinition = "ENUM('INDEXING', 'INDEXED', 'FAILED') NOT NULL")

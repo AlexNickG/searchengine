@@ -69,5 +69,6 @@
 
         <!--appender-ref ref="STD_DEBUG_ROLLING_FILE" level="debug"/-->
         <appender-ref ref="STDOUT" level="info"/>
+        <appender-ref ref="STDOUT" level="error"/>
     </root>
 </configuration>

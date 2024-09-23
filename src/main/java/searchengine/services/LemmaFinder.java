@@ -114,14 +114,14 @@ public class LemmaFinder { //нужно ли создавать экземпля
                 //log.info("lemma word: {}", entry.getKey());
                 lemmaId = lemmaRepository.save(dbLemma).getId();
                 //System.out.println("Save lemma duration: " + (System.currentTimeMillis() - start));
-                indexEntity.setLemmaId(lemmaId);
-                indexEntity.setPageId(page.getId());
-                indexEntity.setRank(entry.getValue());
-                indexSet.add(indexEntity);
+
             }
             //log.info("Save lemma duration: {}", (System.currentTimeMillis() - start));
             //indexMultiInsertQuery(lemmaId, page.getId(), entry.getValue());
-
+            indexEntity.setLemmaId(lemmaId);
+            indexEntity.setPageId(page.getId());
+            indexEntity.setRank(entry.getValue());
+            indexSet.add(indexEntity);
         }
 
         //indexRepository.executeMultiInsert(insertQuery.toString());

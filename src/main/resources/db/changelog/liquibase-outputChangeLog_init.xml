@@ -1,0 +1,111 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog" xmlns:ext="http://www.liquibase.org/xml/ns/dbchangelog-ext" xmlns:pro="http://www.liquibase.org/xml/ns/pro" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog-ext http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-ext.xsd http://www.liquibase.org/xml/ns/pro http://www.liquibase.org/xml/ns/pro/liquibase-pro-latest.xsd http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+    <changeSet author="Natalia (generated)" id="1726848038535-1">
+        <createTable tableName="index">
+            <column autoIncrement="true" name="id" type="INT">
+                <constraints nullable="false" primaryKey="true"/>
+            </column>
+            <column name="lemma_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="page_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="rank" type="FLOAT(12)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+    <changeSet author="Natalia (generated)" id="1726848038535-2">
+        <createTable tableName="lemma">
+            <column autoIncrement="true" name="id" type="INT">
+                <constraints nullable="false" primaryKey="true"/>
+            </column>
+            <column name="frequency" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="lemma" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="site_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+    <changeSet author="Natalia (generated)" id="1726848038535-3">
+        <createTable tableName="page">
+            <column autoIncrement="true" name="id" type="INT">
+                <constraints nullable="false" primaryKey="true"/>
+            </column>
+            <column name="code" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="content" type="MEDIUMTEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="path" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="site_id" type="INT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+    <changeSet author="Natalia (generated)" id="1726848038535-4">
+        <createTable tableName="site">
+            <column autoIncrement="true" name="id" type="INT">
+                <constraints nullable="false" primaryKey="true"/>
+            </column>
+            <column name="last_error" type="TEXT"/>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="ENUM('INDEXING', 'INDEXED', 'FAILED')">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status_time" type="datetime">
+                <constraints nullable="false"/>
+            </column>
+            <column name="url" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+    <changeSet author="Natalia (generated)" id="1726848038535-5">
+        <createIndex associatedWith="" indexName="FK3uxy5s82mxfodai0iafb232cs" tableName="index">
+            <column name="page_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="Natalia (generated)" id="1726848038535-6">
+        <createIndex associatedWith="" indexName="FKfbq251d28jauqlxirb1k2cjag" tableName="lemma">
+            <column name="site_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="Natalia (generated)" id="1726848038535-7">
+        <createIndex associatedWith="" indexName="FKiqgm34dkvjdt7kobg71xlbr33" tableName="index">
+            <column name="lemma_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="Natalia (generated)" id="1726848038535-8">
+        <createIndex associatedWith="" indexName="FKj2jx0gqa4h7wg8ls0k3y221h2" tableName="page">
+            <column name="site_id"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="Natalia (generated)" id="1726848038535-9">
+        <createIndex associatedWith="" indexName="path" tableName="page">
+            <column name="path(512)"/>
+        </createIndex>
+    </changeSet>
+    <changeSet author="Natalia (generated)" id="1726848038535-10">
+        <addForeignKeyConstraint baseColumnNames="page_id" baseTableName="index" constraintName="FK3uxy5s82mxfodai0iafb232cs" deferrable="false" initiallyDeferred="false" onDelete="RESTRICT" onUpdate="RESTRICT" referencedColumnNames="id" referencedTableName="page" validate="true"/>
+    </changeSet>
+    <changeSet author="Natalia (generated)" id="1726848038535-11">
+        <addForeignKeyConstraint baseColumnNames="site_id" baseTableName="lemma" constraintName="FKfbq251d28jauqlxirb1k2cjag" deferrable="false" initiallyDeferred="false" onDelete="RESTRICT" onUpdate="RESTRICT" referencedColumnNames="id" referencedTableName="site" validate="true"/>
+    </changeSet>
+    <changeSet author="Natalia (generated)" id="1726848038535-12">
+        <addForeignKeyConstraint baseColumnNames="lemma_id" baseTableName="index" constraintName="FKiqgm34dkvjdt7kobg71xlbr33" deferrable="false" initiallyDeferred="false" onDelete="RESTRICT" onUpdate="RESTRICT" referencedColumnNames="id" referencedTableName="lemma" validate="true"/>
+    </changeSet>
+    <changeSet author="Natalia (generated)" id="1726848038535-13">
+        <addForeignKeyConstraint baseColumnNames="site_id" baseTableName="page" constraintName="FKj2jx0gqa4h7wg8ls0k3y221h2" deferrable="false" initiallyDeferred="false" onDelete="RESTRICT" onUpdate="RESTRICT" referencedColumnNames="id" referencedTableName="site" validate="true"/>
+    </changeSet>
+</databaseChangeLog>

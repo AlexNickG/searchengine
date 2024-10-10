@@ -26,19 +26,18 @@ public class StatisticsServiceImpl implements StatisticsService {
 
     private final PageRepository pageRepository;
 
-    private final Random random = new Random();
     private final SitesList sites;
     private final LemmaRepository lemmaRepository;
 
     @Override
     public StatisticsResponse getStatistics() {
-
-        TotalStatistics total = new TotalStatistics();
-        total.setSites(sites.getSites().size());
-        total.setIndexing(true);
-
         List<DetailedStatisticsItem> detailed = new ArrayList<>();
         List<Site> sitesList = siteRepository.findAll();
+        TotalStatistics total = new TotalStatistics();
+        total.setSites(sitesList.size());
+        total.setIndexing(true);
+
+
         for (Site site : sitesList) { //TODO: refactor to forEach
             DetailedStatisticsItem item = new DetailedStatisticsItem();
             item.setName(site.getName());

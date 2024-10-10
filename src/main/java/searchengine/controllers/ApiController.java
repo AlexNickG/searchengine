@@ -1,6 +1,7 @@
 package searchengine.controllers;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +18,7 @@ import searchengine.services.IndexingServiceImpl;
 import searchengine.services.SearchService;
 import searchengine.services.StatisticsService;
 
+@Slf4j
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/api")
@@ -28,7 +30,6 @@ public class ApiController {
     private final IndexRepository indexRepository;
     private final LemmaRepository lemmaRepository;
     private final PageRepository pageRepository;
-    private final Config config;
 
     @GetMapping("/statistics")
     public ResponseEntity<StatisticsResponse> statistics() {
@@ -55,20 +56,13 @@ public class ApiController {
 
     @DeleteMapping("/deleteAll")
     public void deleteAll() throws InterruptedException {
-//        System.out.println(config.getUserAgent());
         siteRepository.setForeignKeyCheckNull();
         indexRepository.deleteIndex();
         lemmaRepository.deleteLemmas();
         pageRepository.deletePages();
         siteRepository.deleteAllSites();
         siteRepository.setForeignKeyCheckNotNull();
-        /*indexRepository.deleteAll();
-        lemmaRepository.deleteAll();
-        pageRepository.deleteAll();*/
-        //siteRepository.deleteAll();
-        //return new ResponseEntity<>(indexingService.stopIndexing(), HttpStatus.OK);
-        //indexingService.
-        System.out.println("DB cleared");
+        log.info("DB cleared");
     }
 
     @GetMapping("/search")

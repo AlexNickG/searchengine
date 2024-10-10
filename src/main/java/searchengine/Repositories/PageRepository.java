@@ -17,9 +17,7 @@ public interface PageRepository extends JpaRepository<Page, Integer> {
     @Query(value = "delete from search_engine.page", nativeQuery = true)
     void deletePages();
 
-//    @Transactional
-//    @Query(value = "select * from search_engine.page where path like ?1", nativeQuery = true)
-List<Page> findByPath(String link);
+    List<Page> findByPath(String link);
 
     List<Page> findBySite_id(int site_id);
 }

@@ -7,14 +7,8 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.model.Site;
 
-import java.util.List;
-
 @Repository
 public interface SiteRepository extends JpaRepository<Site, Integer> {
-    /*@Modifying
-    @Transactional
-    @Query(value = "TRUNCATE TABLE site", nativeQuery = true)
-    void truncateTable();*/
 
     @Transactional
     @Modifying
@@ -34,6 +28,4 @@ public interface SiteRepository extends JpaRepository<Site, Integer> {
     Site findByName(String name);
 
     Site findByUrl(String url);
-
-    //List<Site> findAllSites();
 }

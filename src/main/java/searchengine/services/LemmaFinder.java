@@ -6,8 +6,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.Repositories.IndexRepository;
@@ -32,7 +30,6 @@ public class LemmaFinder { //нужно ли создавать экземпля
     private final IndexRepository indexRepository;
     private LuceneMorphology luceneMorph;
     private final PageRepository pageRepository;
-    private static StringBuilder insertQuery = new StringBuilder();
     Set<Index> indexSet = ConcurrentHashMap.newKeySet();
     {
         try {
@@ -40,7 +37,6 @@ public class LemmaFinder { //нужно ли создавать экземпля
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        System.out.println("Tread name: " + Thread.currentThread().getName());
     }
 
     public void collectLemmas(int pageId) throws SQLException {
@@ -51,7 +47,6 @@ public class LemmaFinder { //нужно ли создавать экземпля
 
         for (String word : words) {
             if (word.isEmpty()) {
-                //log.info("Empty word");
                 continue;
             }
             if (!luceneMorph.checkString(word)) {
@@ -61,12 +56,8 @@ public class LemmaFinder { //нужно ли создавать экземпля
                 log.info("bad word {}", word);
                 throw new WordNotFitToDictionaryException(word);
             }
-            //wordBaseForms = luceneMorph.getMorphInfo(word);
-            //log.info("good word {}", word);
-//            System.out.println("-" + word + "-");
             wordBaseForms = luceneMorph.getMorphInfo(word);
             if (wordBaseForms.stream().anyMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ") || getLemma(word).length() < 3)) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
-                //System.out.println("match");
             } else {
                 if (!lemmasMap.containsKey(getLemma(word))) {
                     lemmasMap.put(getLemma(word), 1);
@@ -78,65 +69,42 @@ public class LemmaFinder { //нужно ли создавать экземпля
         saveLemmas(lemmasMap, page);
     }
 
-
     public String getLemma(String word) {
         return luceneMorph.getNormalForms(word).get(0);
     }
 
-    @Transactional
-    public void saveLemmas(HashMap<String, Integer> lemmasMap, Page page) throws SQLException { //TODO: продумать сохранение лемм и индексов
-
+    //@Transactional
+    public void saveLemmas(HashMap<String, Integer> lemmasMap, Page page) {
 
         int lemmaId;
         Lemma dbLemma;
-        List<Lemma> dbLemmaS;
 
         for (Map.Entry<String, Integer> entry : lemmasMap.entrySet()) {
-
             Index indexEntity = new Index();
-            //long start = System.currentTimeMillis();
             synchronized (lemmaRepository) {
-
                 dbLemma = lemmaRepository.findByLemmaAndSite_Id(entry.getKey(), page.getSite().getId());
                 if (dbLemma != null) {
-                    //dbLemma = dbLemmaS.get(0);
                     dbLemma.setFrequency(dbLemma.getFrequency() + 1);
-//                    if (dbLemmaS.size() > 1) {
-//                        System.out.println("Two identical lemmas!");
-//                        dbLemmaS.forEach(System.out::println);
-//                    }
                 } else {
                     dbLemma = new Lemma();
                     dbLemma.setSite(page.getSite());
                     dbLemma.setLemma(entry.getKey());
                     dbLemma.setFrequency(1);
                 }
-                //log.info("lemma word: {}", entry.getKey());
                 lemmaId = lemmaRepository.save(dbLemma).getId();
-                //System.out.println("Save lemma duration: " + (System.currentTimeMillis() - start));
-
             }
-            //log.info("Save lemma duration: {}", (System.currentTimeMillis() - start));
-            //indexMultiInsertQuery(lemmaId, page.getId(), entry.getValue());
             indexEntity.setLemmaId(lemmaId);
             indexEntity.setPageId(page.getId());
             indexEntity.setRank(entry.getValue());
             indexSet.add(indexEntity);
         }
-
-        //indexRepository.executeMultiInsert(insertQuery.toString());
-        //indexRepository.saveAllAndFlush(indexSet);
     }
 
     public void saveIndex() {
         indexRepository.saveAll(indexSet);
     }
+
     private String getText(Page page) {
         return page.getContent();
-    }
-
-    public static void indexMultiInsertQuery(int lemma_id, int page_id, float rank) {
-        insertQuery.append(insertQuery.isEmpty() ? "" : ", ").append("(").append(lemma_id).append(", ").append(page_id).append(", ").append(rank).append(")");
-        //insertQuery.append((insertQuery.isEmpty() ? "" : ", ") + "('" + lemma_id + "', '" + page_id + "', '" + rank + "')");
     }
 }

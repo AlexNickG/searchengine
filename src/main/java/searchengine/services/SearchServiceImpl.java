@@ -87,29 +87,11 @@ public class SearchServiceImpl implements SearchService {
                 if (lemmaDbListExisted.size() == queryLemmasSet.size()) {//Если все леммы из запроса для этого сайта есть в БД (а если хотя бы одного слова из запроса нет на сайте, не выдавать ничего). Уточнить логику
                     List<Lemma> finishLemmaList = new ArrayList<>();//TODO: проверить правильную работу для запроса "купить по безналичному расчету" DONE!
 
-                    int quantityPagesByLemmas = lemmaDbListExisted.stream().mapToInt(l -> l.getPages().size()).sum();//сумма страниц для всех лемм из запроса
-
                     for (Lemma lemma : lemmaDbListExisted) {
-                        //int f = lemma.getFrequency();
-//                        if (100 * lemma.getPages().size() / quantityPagesByLemmas <= 100) { //отношение количества страниц для каждой леммы к сумме страниц для всех лемм запроса TODO: продумать алгоритм снижения выдачи результатов
-//                            finishLemmaList.add(lemma);
-//                        }
                         if (100 * lemma.getFrequency() / quantityPagesBySite < 90) //отношение количества страниц для каждой леммы к общему количеству страниц сайта
                             finishLemmaList.add(lemma);
                     }
                     sortedLemmaDbList = sortLemmasByFreq(finishLemmaList); //сортируем леммы в порядке увеличения частоты встречаемости
-                /*List<Lemma> lemmasToRemove = new ArrayList<>();
-                for (Lemma lemma : sortedLemmaDbList) {
-                 if (lemma.getPages().size() <= 10000) { //если число страниц для данной леммы слишком большое TODO: продумать алгоритм снижения выдачи результатов
-                        pageByLemmaTotal.addAll(lemma.getPages());//добавляем все страницы в список
-                    } else {
-                        lemmasToRemove.add(lemma);// то добавляем такую лемму в список на удаление
-                    }
-
-                }
-                sortedLemmaDbList.removeAll(lemmasToRemove);
-                lemmaDbListExisted = sortedLemmaDbList.stream().filter(lemmasToRemove::contains).toList();*/
-
                     for (Lemma lemma : sortedLemmaDbList) { //По первой, самой редкой лемме из списка, находим все страницы, на которых она встречается. Далее ищем соответствия следующей леммы из этого списка страниц
                         if (pageByLemmaTotal.isEmpty()) {//TODO: уточнить логику: после того, как список обнуляется леммой, которая в нем отсутствует, следующая лемма добавляет свои страницы в список, который выдается во фронт
                             pageByLemmaTotal.addAll(lemma.getPages());
@@ -137,11 +119,9 @@ public class SearchServiceImpl implements SearchService {
             float maxRank;
             Optional<Float> maxRankOptional = sortedMap.values().stream().max(Float::compare);// находим максимальный rank
             maxRank = maxRankOptional.isPresent() ? maxRankOptional.get() : 1;  //если удается найти maxRank
-            //System.out.println("MaxRank: " + maxRank);
             for (Map.Entry<Page, Float> entry : sortedMap.entrySet()) {//считаем и сохраняем относительный rank
                 Page page = entry.getKey();
                 float value = entry.getValue() / maxRank;
-                //System.out.println("Relative rank: " + value);
                 sortedMapRelRank.put(page, value);
             }
 
@@ -209,7 +189,6 @@ public class SearchServiceImpl implements SearchService {
         try {
             return luceneMorph.getNormalForms(word).get(0);
         } catch (Exception e) {//TODO:добавить обработку других прерываний
-            //e.printStackTrace();
             return word;
         }
     }
@@ -253,14 +232,6 @@ public class SearchServiceImpl implements SearchService {
                 .map(entry -> String.join(" ", entry.getKey()))
                 .collect(Collectors.toList());
 
-        /*Map<List<String>, Integer> topSnippetList = snippetList.entrySet().stream()
-                .sorted(Map.Entry.<List<String>, Integer>comparingByValue().reversed())
-                .limit(limitInt)
-                .collect(Collectors.toMap(Map.Entry::getKey,
-                Map.Entry::getValue,
-                        (e1, e2) -> e1,
-                        LinkedHashMap::new));*/
-        //List<String> topSnippetList = snippetList.keySet().stream().limit(3).map(keyList -> String.join(" ", keyList)).toList(); //берем первые три самых релевантных сниппета
         String wholeSnippetText = String.join(" ... ", topSnippetList);//соединяем сниппеты в строку
         List<String> words = Arrays.stream(wholeSnippetText//преобразуем строку сниппетов в List
                         .trim()

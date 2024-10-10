@@ -17,10 +17,8 @@ public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
     @Modifying
     @Query(value = "delete from search_engine.lemma", nativeQuery = true)
     void deleteLemmas();
-    //@Transactional
-    //@Query(value = "select * from search_engine.lemma where lemma like ?1", nativeQuery = true)
+
     List<Lemma> findByLemma(String lemma); //two sites may have the same lemma
 
     Lemma findByLemmaAndSite_Id(String lemma, int siteId);
-    //List<Page> findByLemma(String lemma);
 }

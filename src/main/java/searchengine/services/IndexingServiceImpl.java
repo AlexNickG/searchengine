@@ -49,9 +49,8 @@ public class IndexingServiceImpl implements IndexingService {
     private final IndexRepository indexRepository;
     private final LemmaFinder lemmaFinder;
     public static ConcurrentSkipListSet<String> globalLinksSet = new ConcurrentSkipListSet<>();
-    public static volatile boolean stopIndexing = false;
     public static volatile boolean stop;
-    public List<Callable<Integer>> threadList = new ArrayList<>();
+    public List<Thread> threadList = new ArrayList<>();
     public List<ForkJoinTask<Void>> fjpList = new ArrayList<>();
     private List<Future<Integer>> futureList = new ArrayList<>();
     private static volatile AtomicInteger counter = new AtomicInteger(0);
@@ -63,59 +62,40 @@ public class IndexingServiceImpl implements IndexingService {
 
     @Override
     public ResponseMessage startIndexing() {
-        start = System.currentTimeMillis();
-
 
         List<Site> indexingSites = siteRepository.findAll();
 
-//        if (indexingSites.stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
-//            return sendResponse(false, "Индексация уже запущена");
-//        } else {
+        if (indexingSites.stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
+            return sendResponse(false, "Индексация уже запущена");
+        }
+
         threadList.clear();
         if (executor != null) {
             executor.shutdown();
         }
         globalLinksSet.clear();
         stop = false;
-        stopIndexing = false;
-        //clearDb();
+        clearDb();
         executor = Executors.newFixedThreadPool(sites.getSites().size());
         for (int i = 0; i < sites.getSites().size(); i++) {
-            threadList.add( new StartIndexing(i)); //How to start threads in ExecutorService?
+            threadList.add(new StartIndexing(i)); //How to start threads in ExecutorService?
         }
-
-        for (Callable<Integer> thread: threadList) {
-            Future<Integer> futureThread = executor.submit(thread);
-            futureList.add(futureThread);
+        start = System.currentTimeMillis();
+        for (Thread thread : threadList) {
+            thread.start();//TODO: Start threads thru ExecutorService
         }
         System.out.println("Started threads: " + threadList.size());
-        //
         return sendResponse(true, "");
-//        }
     }
 
     @Override
     public ResponseMessage stopIndexing() {
-
         List<Site> sites = siteRepository.findAll();
         if (sites.stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
-            stop = true;
-            //fjpList.forEach(t -> t.cancel(true)); //TODO: cancel tasks by use iterator
-
-            /*for (Site site : sites) {
-                if (site.getStatus() == Status.INDEXING) {
-                    site = siteRepository.findById(site.getId()).get();
-
-                }
-            }*/
-            //TODO: wait for ForkJoinPool shutdown
-            while (true) {
-                if (stopIndexing) {//TODO: if forkjoin never been ran, stopIndexing always will be false
-                    executor.shutdown(); //Executor shutdown completed, but one thread is working
-                    threadList.clear();
-                    return sendResponse(true, "");
-                }
+            for (Thread thread : threadList) {
+                thread.interrupt();
             }
+            return sendResponse(true, "");
         } else {
             return sendResponse(false, "Индексация не запущена");
         }
@@ -130,7 +110,7 @@ public class IndexingServiceImpl implements IndexingService {
         while (matcher.find()) {
             cleanUrl = matcher.group();
         }
-        String finalCleanUrl = cleanUrl;
+        String finalCleanUrl = cleanUrl; //TODO: optimize it
 
         Optional<searchengine.config.Site> optionalSite = sites.getSites().stream().filter(s -> s.getUrl().contains(finalCleanUrl)).findFirst();
         if (optionalSite.isEmpty()) {
@@ -150,44 +130,10 @@ public class IndexingServiceImpl implements IndexingService {
         } catch (InterruptedException | MalformedURLException | SQLException e) {
             throw new RuntimeException(e);
         }
-       /* try {
-//            Thread.sleep(950);
-//            response = Jsoup.connect(link).execute();
-            Thread.sleep(550);
-            document = Jsoup.connect(url).userAgent(userAgent).get();
-        } catch (IOException | InterruptedException e) {
-            System.out.println("Broken link: " + url);
-            return sendResponse(false, "Broken link");
-        }
-            //response = Jsoup.connect(link)
-            //        .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:25.0) Gecko/20100101 Firefox/25.0 Chrome/51.0.2704.106 Safari/537.36 OPR/38.0.2220.41")
-            //        .referrer("google.com").timeout(1000).execute().bufferUp();
-            //document = response.parse();
-        Page page = pageRepository.findByPath(url);
-        if (page == null) {
-            page = new Page();
-            site.setName(siteName);
-            site.setUrl(siteUrl);
-            site.setStatus(Status.INDEXED);
-            site.setStatusTime(LocalDateTime.now());
-            siteRepository.save(site);
-            page.setSite(site);
-        }
-
-        try {
-            page.setPath(new URL(url).getPath());
-        } catch (MalformedURLException e) {
-            throw new RuntimeException(e);
-        }
-        page.setCode(document.connection().response().statusCode());
-        page.setContent(document.toString());
-        int pageId = pageRepository.save(page).getId();
-        try {
-            lemmaFinder.collectLemmas(pageId);
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }*/
         lemmaFinder.saveIndex();
+        site.setStatus(Status.INDEXED);
+        site.setStatusTime(LocalDateTime.now());
+        siteRepository.save(site);
         return sendResponse(true);
     }
 
@@ -205,13 +151,12 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     @RequiredArgsConstructor
-    public class StartIndexing implements Callable<Integer> {
+    public class StartIndexing extends Thread {
 
         private final int siteNumber;
 
-
         @Override
-        public Integer call() {
+        public void run() {
             String link = sites.getSites().get(siteNumber).getUrl();
             Site site = new Site();
             site.setUrl(link);
@@ -226,8 +171,10 @@ public class IndexingServiceImpl implements IndexingService {
             ForkJoinTask<Void> task = forkJoinPool.submit(indexing);
 
             do {
-                if (forkJoinPool.isTerminating()) {
-                    System.out.println("FJP is terminating");
+                if (isInterrupted()) {
+                    System.out.println("Thread " + Thread.currentThread() + " have been interrupted");
+                    stop = true;
+                    forkJoinPool.shutdownNow();
                 }
                 if (task.isCompletedAbnormally()) { //TODO: what is abnormally?
                     log.info("isTerminating: {}", forkJoinPool.isTerminating());
@@ -240,51 +187,34 @@ public class IndexingServiceImpl implements IndexingService {
                     siteRepository.saveAndFlush(site); //save vs saveAndFlush
                     forkJoinPool.shutdown();
                     log.info("the task was cancelled");
-                    //stopIndexing = true;//it stops all threads
-                    //break;
                 }
                 if (task.isCompletedNormally()) {
-                    //log.error("Exception task.isCompletedNormally!: {}", task.getException().getMessage(), task.getException());
-                    //indexRepository.saveAllAndFlush(lemmaFinder.indexSet);
-                    //log.info("saveIndex starts!");
                     log.info("indexSet size = {}", lemmaFinder.getIndexSet().size());
-                    //System.err.println("System.err.println");
-                    //System.out.println("System.out.println");
-                    //lemmaFinder.saveIndex(); //use multiinsert
-                    //List<Page> pageList = pageRepository.findAll();
-                    //pageList.forEach(lemmaFinder::collectLemmas);
                     site.setUrl(link);
                     site.setStatus(Status.INDEXED);
                     site.setName(sites.getSites().get(siteNumber).getName());
                     site.setStatusTime(LocalDateTime.now());
                     siteRepository.save(site);
                     forkJoinPool.shutdown();
-                    //log.info("The task was done \n It's took {} seconds", (System.currentTimeMillis() - start) / 1000);
-                    //log.info("Task is done: {}", task.isDone());
-                    //stopIndexing = true;
-                    //break;
                 }
             } while (!task.isDone());
-            log.info("Trying to increment counter");
+
             counter.addAndGet(1);
-            log.info("Counter: {}", counter);
+
             if (counter.get() == sites.getSites().size()) {
                 start2 = System.currentTimeMillis();
                 lemmaFinder.saveIndex();
                 log.info("Index saving took {} seconds", (System.currentTimeMillis() - start2) / 1000);
                 log.info("Parsing took {} seconds", (System.currentTimeMillis() - start) / 1000);
+                counter.set(0);
             }
-            return 1;
         }
     }
 
     @Getter
     @Setter
     public class Indexing extends RecursiveAction {
-        //private PageRepository pageRepository;
-        //private SiteRepository siteRepository;
-        //private LemmaRepository lemmaRepository;
-        //private LemmaFinder lemmaFinder;
+
         private Site site;
         private String link;
         private List<Indexing> taskList = new ArrayList<>();
@@ -295,56 +225,23 @@ public class IndexingServiceImpl implements IndexingService {
         }
 
         @Override
-        public boolean cancel(boolean c) {
-            taskList.forEach(t -> t.cancel(true));
-            return super.cancel(true);
-        }
-
-        //@SneakyThrows
-        @Override
         protected void compute() {
             try {
                 Thread.sleep(timeout);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
-            if (IndexingServiceImpl.stop) {
-                cancel(true);
-            }
 
-            Document document = null;
+            Document document;
             try {
                 document = connectToPageAndSaveIt(link, site);
             } catch (InterruptedException | MalformedURLException | SQLException e) {
                 throw new RuntimeException(e);
             }
-//            int statusCode;
-//            System.out.println("Thread" + Thread.currentThread().getName() + "connect to: "+ link);
-//            Connection connection = Jsoup.connect(link).ignoreHttpErrors(true);
-//            try {
-//                document = connection.userAgent(userAgent).referrer(referrer).get();
-//                statusCode = connection.response().statusCode();
-//            } catch (SocketTimeoutException ste) {
-//                statusCode = 494;
-//            }
-//
-//
-//            String content = document.toString();
-//            if (String.valueOf(statusCode).startsWith("4") || String.valueOf(statusCode).startsWith("5")) {
-//                content = document.toString();
-//            }
-//            Page page = new Page();
-//            page.setSite(site);
-//            page.setPath(new URL(link).getPath());
-//            page.setCode(statusCode);
-//            page.setContent(content);
-//            int pageId = pageRepository.saveAndFlush(page).getId();
-//            lemmaFinder.collectLemmas(pageId);//why does the location where this method is called have no effect?
-//            site.setStatusTime(LocalDateTime.now());
-//            siteRepository.saveAndFlush(site);
-if(document == null) {
-    return;
-}
+
+            if (document == null) {
+                return;
+            }
             Set<String> linksSet = document.select("a").stream()
                     .map(e -> e.attr("abs:href"))
                     .filter(e -> e.contains(site.getUrl())
@@ -356,23 +253,18 @@ if(document == null) {
                     .collect(Collectors.toSet());
 
             if (IndexingServiceImpl.stop) {
-                System.out.println("cancelled");
+                log.info("linksSet.clear()");
                 linksSet.clear();
             }
 
             linksSet.removeAll(IndexingServiceImpl.globalLinksSet);
             IndexingServiceImpl.globalLinksSet.addAll(linksSet);
 
-            //System.out.println("linksSet size: " + linksSet.size());
             for (String subLink : linksSet) {
                 Indexing parse = new Indexing(subLink, site);
                 taskList.add(parse);
             }
             ForkJoinTask.invokeAll(taskList);
-
-            //System.out.println(Thread.currentThread().getName() + " isCancelled: " + isCancelled());
-            //System.out.println(Thread.currentThread().getName() + " isCompletedAbnormally: " + isCompletedAbnormally());
-            //System.out.println("Set size: " + IndexingServiceImpl.globalLinksSet.size());
             taskList.forEach(Indexing::join);
         }
     }
@@ -425,7 +317,6 @@ if(document == null) {
         if (!pageList.isEmpty()) {
             page = pageList.get(0);
         }
-        //page = pageList.get(0);
         page.setSite(site);
         page.setPath(new URL(link).getPath());
         page.setCode(statusCode);
@@ -443,5 +334,5 @@ if(document == null) {
         pageRepository.deletePages();
         siteRepository.deleteAllSites();
         siteRepository.setForeignKeyCheckNotNull();
-        }
+    }
 }

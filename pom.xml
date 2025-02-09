@@ -13,7 +13,7 @@
         <mysql.connector.version>9.0.0</mysql.connector.version>
         <liquibase.version>4.29.2</liquibase.version>
         <lombok.version>1.18.24</lombok.version>
-        <jsoup.version>1.15.4</jsoup.version>
+        <jsoup.version>1.18.3</jsoup.version>
         <slf4j.version>1.7.26</slf4j.version>
         <lucene.morphology.version>1.5</lucene.morphology.version>
     </properties>
@@ -62,15 +62,16 @@
         <dependency>
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
-            <version>${jsoup.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>${slf4j.version}</version>
-        </dependency>
+            <!--<version>1.18.3</version>-->
+        <version>${jsoup.version}</version>
+   </dependency>
+   <dependency>
+       <groupId>org.slf4j</groupId>
+       <artifactId>slf4j-api</artifactId>
+       <version>${slf4j.version}</version>
+   </dependency>
 
-        <!-- Lucene dependencies -->
+   <!-- Lucene dependencies -->
         <dependency>
             <groupId>org.apache.lucene.morphology</groupId>
             <artifactId>morph</artifactId>

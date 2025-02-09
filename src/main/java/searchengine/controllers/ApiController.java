@@ -48,10 +48,7 @@ public class ApiController {
 
     @PostMapping("/indexPage")
     public ResponseEntity<ResponseMessage> indexPage(@RequestParam String url) {
-        if (url.contains("000")) {
-            return new ResponseEntity<>(indexingService.addPageForIndexing(url), HttpStatus.BAD_REQUEST);
-        }
-        return new ResponseEntity<>(indexingService.addPageForIndexing(url), HttpStatus.OK); //CREATED
+       return new ResponseEntity<>(indexingService.addPageForIndexing(url), HttpStatus.OK); //CREATED
     }
 
     @DeleteMapping("/deleteAll")

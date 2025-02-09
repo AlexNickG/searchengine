@@ -5,7 +5,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
+import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
+import org.jsoup.UnsupportedMimeTypeException;
 import org.jsoup.nodes.Document;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Service;
@@ -113,7 +115,7 @@ public class IndexingServiceImpl implements IndexingService {
         String finalCleanUrl = cleanUrl; //TODO: optimize it
 
         Optional<searchengine.config.Site> optionalSite = sites.getSites().stream().filter(s -> s.getUrl().contains(finalCleanUrl)).findFirst();
-        if (optionalSite.isEmpty()) {
+        if (optionalSite.isEmpty() || finalCleanUrl.isEmpty()) {
             return sendResponse(false, "Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
         }
         site = siteRepository.findByUrl(optionalSite.get().getUrl());
@@ -126,7 +128,8 @@ public class IndexingServiceImpl implements IndexingService {
         site.setStatusTime(LocalDateTime.now());
         siteRepository.save(site);
         try {
-            saveOnePage(url, site);
+            connectToPageAndSaveIt(url, site, 1);
+            //saveOnePage(url, site);
         } catch (InterruptedException | MalformedURLException | SQLException e) {
             throw new RuntimeException(e);
         }
@@ -134,7 +137,7 @@ public class IndexingServiceImpl implements IndexingService {
         site.setStatus(Status.INDEXED);
         site.setStatusTime(LocalDateTime.now());
         siteRepository.save(site);
-        return sendResponse(true);
+        return sendResponse(true, "");//По ТЗ формат ответа не использует поле error; можно ли отправить пустое сообщение?
     }
 
     public ResponseMessage sendResponse(boolean result, String message) {
@@ -144,11 +147,11 @@ public class IndexingServiceImpl implements IndexingService {
         return responseMessage;
     }
 
-    public ResponseMessage sendResponse(boolean result) {
-        ResponseMessage responseMessage = new ResponseMessage();
-        responseMessage.setResult(result);
-        return responseMessage;
-    }
+//    public ResponseMessage sendResponse(boolean result) {
+//        ResponseMessage responseMessage = new ResponseMessage();
+//        responseMessage.setResult(result);
+//        return responseMessage;
+//    }
 
     @RequiredArgsConstructor
     public class StartIndexing extends Thread {
@@ -203,6 +206,7 @@ public class IndexingServiceImpl implements IndexingService {
 
             if (counter.get() == sites.getSites().size()) {
                 start2 = System.currentTimeMillis();
+                lemmaRepository.flush();
                 lemmaFinder.saveIndex();
                 log.info("Index saving took {} seconds", (System.currentTimeMillis() - start2) / 1000);
                 log.info("Parsing took {} seconds", (System.currentTimeMillis() - start) / 1000);
@@ -234,7 +238,7 @@ public class IndexingServiceImpl implements IndexingService {
 
             Document document;
             try {
-                document = connectToPageAndSaveIt(link, site);
+                document = connectToPageAndSaveIt(link, site, 0);
             } catch (InterruptedException | MalformedURLException | SQLException e) {
                 throw new RuntimeException(e);
             }
@@ -269,26 +273,65 @@ public class IndexingServiceImpl implements IndexingService {
         }
     }
 
-    public Document connectToPageAndSaveIt(String link, Site site) throws InterruptedException, MalformedURLException, SQLException {
+    public Document connectToPageAndSaveIt(String link, Site site, int method) throws InterruptedException, MalformedURLException, SQLException {
         Thread.sleep(timeout);
         Connection connection = Jsoup.connect(link).ignoreHttpErrors(true);
         Document document;
         String content;
-        int statusCode;
+        Page page = new Page();
+        //int statusCode;
         try {
             document = connection.userAgent(userAgent).referrer(referrer).get();
             content = document.toString();
-            statusCode = connection.response().statusCode();
+            //statusCode = connection.response().statusCode();
+        } catch (HttpStatusException e) {
+            //statusCode = connection.response().statusCode();
+            log.error("HTTP error fetching URL. Status: {}{}", e.getStatusCode(), link);
+            document = null;
+            content = "";
+            //statusCode = 404; //if server can't answer
+        } catch (UnsupportedMimeTypeException e) {
+            //statusCode = connection.response().statusCode();
+            log.error("Unsupported MIME type: {}{}", e.getMimeType(), link);
+            document = null;
+            content = "";
+            //statusCode = 404; //if server can't answer
         } catch (IOException e) {
+            //statusCode = connection.response().statusCode();
+            log.error("IOException: {}{}", e.getMessage(), link);
+            document = null;
+            content = "";
+            //statusCode = 404; //if server can't answer
+        } catch (IndexOutOfBoundsException e) {
+            //statusCode = connection.response().statusCode();
+            log.error("IndexOutOfBoundsException: {}{}", e.getMessage(), link);
+            document = null;
+            content = "";
+            //statusCode = 404; //if server can't answer
+        } catch (RuntimeException e) {
+            //statusCode = connection.response().statusCode();
+            log.error("Caught RuntimeException: {}{}", e.getMessage(), link);
+            document = null;
+            content = "";
+            //statusCode = 404; //if server can't answer
+            e.printStackTrace(); // Log the stack trace for debugging
+        }
+        /*} catch (Exception e) {
+            log.error("IOException occurred while connecting to the page: {}", e.getMessage());
             document = null;
             content = "";
             statusCode = 404; //if server can't answer
+        }*/
+        if(method == 1) {
+            List<Page> pageList = pageRepository.findByPath(String.valueOf(new URL(link).getPath()));
+            if (!pageList.isEmpty()) {
+                page = pageList.get(0);
+            }
         }
 
-        Page page = new Page();
         page.setSite(site);
         page.setPath(new URL(link).getPath());
-        page.setCode(statusCode);
+        page.setCode(connection.response().statusCode());
         page.setContent(content);
         int pageId = pageRepository.save(page).getId();
         lemmaFinder.collectLemmas(pageId);//why does the location where this method is called have no effect?
@@ -297,35 +340,35 @@ public class IndexingServiceImpl implements IndexingService {
         return document;
     }
 
-    public void saveOnePage(String link, Site site) throws InterruptedException, MalformedURLException, SQLException {
-        Thread.sleep(timeout);
-        Connection connection = Jsoup.connect(link).ignoreHttpErrors(true);
-        Document document;
-        String content;
-        Page page = new Page();
-        int statusCode;
-        try {
-            document = connection.userAgent(userAgent).referrer(referrer).get();
-            content = document.toString();
-            statusCode = connection.response().statusCode();
-        } catch (IOException e) {
-            document = null;
-            content = "";
-            statusCode = 404; //if server can't answer
-        }
-        List<Page> pageList = pageRepository.findByPath(String.valueOf(new URL(link).getPath()));
-        if (!pageList.isEmpty()) {
-            page = pageList.get(0);
-        }
-        page.setSite(site);
-        page.setPath(new URL(link).getPath());
-        page.setCode(statusCode);
-        page.setContent(content);
-        int pageId = pageRepository.save(page).getId();
-        lemmaFinder.collectLemmas(pageId);//why does the location where this method is called have no effect?
-        site.setStatusTime(LocalDateTime.now());
-        siteRepository.save(site);
-    }
+//    public void saveOnePage(String link, Site site) throws InterruptedException, MalformedURLException, SQLException {
+//        Thread.sleep(timeout);
+//        Connection connection = Jsoup.connect(link).ignoreHttpErrors(true);
+//        Document document;
+//        String content;
+//        Page page = new Page();
+//        int statusCode;
+//        try {
+//            document = connection.userAgent(userAgent).referrer(referrer).get();
+//            content = document.toString();
+//            statusCode = connection.response().statusCode();
+//        } catch (IOException e) {
+//            document = null;
+//            content = "";
+//            statusCode = 404; //if server can't answer
+//        }
+//        List<Page> pageList = pageRepository.findByPath(String.valueOf(new URL(link).getPath()));
+//        if (!pageList.isEmpty()) {
+//            page = pageList.get(0);
+//        }
+//        page.setSite(site);
+//        page.setPath(new URL(link).getPath());
+//        page.setCode(statusCode);
+//        page.setContent(content);
+//        int pageId = pageRepository.save(page).getId();
+//        lemmaFinder.collectLemmas(pageId);//why does the location where this method is called have no effect?
+//        site.setStatusTime(LocalDateTime.now());
+//        siteRepository.save(site);
+//    }
 
     public void clearDb() {
         siteRepository.setForeignKeyCheckNull();

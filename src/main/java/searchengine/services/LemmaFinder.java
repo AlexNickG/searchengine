@@ -101,7 +101,7 @@ public class LemmaFinder { //нужно ли создавать экземпля
     }
 
     public void saveIndex() {
-        indexRepository.saveAll(indexSet);
+        indexRepository.saveAllAndFlush(indexSet);
     }
 
     private String getText(Page page) {

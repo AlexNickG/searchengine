@@ -63,12 +63,27 @@
             <onMismatch>DENY</onMismatch>
         </filter>
     </appender>
+    <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">
+        <layout class="ch.qos.logback.classic.PatternLayout">
+            <Pattern>
+                %(%d{ISO8601}) %highlight(%-5level) [%blue(%t)] %yellow(%C{1}): %msg%n%throwable
+            </Pattern>
+        </layout>
+        <!--encoder>
+            <pattern>%d{ISO8601} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder-->
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>ERROR</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+    </appender>
     <root level="debug">
         <appender-ref ref="STDOUT_FILE" level="info"/>
         <appender-ref ref="STDERR_FILE" level="error"/>
 
         <!--appender-ref ref="STD_DEBUG_ROLLING_FILE" level="debug"/-->
         <appender-ref ref="STDOUT" level="info"/>
-        <appender-ref ref="STDOUT" level="error"/>
+        <appender-ref ref="STDERR" level="error"/>
     </root>
 </configuration>

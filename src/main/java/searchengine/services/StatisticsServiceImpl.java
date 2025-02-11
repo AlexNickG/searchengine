@@ -40,15 +40,15 @@ public class StatisticsServiceImpl implements StatisticsService {
             DetailedStatisticsItem item = new DetailedStatisticsItem();
             item.setName(site.getName());
             item.setUrl(site.getUrl());
-            int pages = (int) pageRepository.count();
-            int lemmas = (int) lemmaRepository.count();
-            item.setPages(pages);
-            item.setLemmas(lemmas);
+            int pagesCount = pageRepository.findBySite_id(site.getId()).size();
+            int lemmasCount = lemmaRepository.findBySite_id(site.getId()).size();
+            item.setPages(pagesCount);
+            item.setLemmas(lemmasCount);
             item.setStatus(String.valueOf(site.getStatus()));
             item.setError(site.getLastError());
             item.setStatusTime(ZonedDateTime.of(site.getStatusTime(), ZoneId.systemDefault()).toInstant().toEpochMilli());
-            total.setPages(total.getPages() + pages);
-            total.setLemmas(total.getLemmas() + lemmas);
+            total.setPages(total.getPages() + pagesCount);
+            total.setLemmas(total.getLemmas() + lemmasCount);
             detailed.add(item);
         }
 

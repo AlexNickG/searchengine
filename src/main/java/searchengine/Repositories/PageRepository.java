@@ -19,5 +19,7 @@ public interface PageRepository extends JpaRepository<Page, Integer> {
 
     List<Page> findByPath(String link);
 
+    List<Page> findByPathAndSite_id(String link, int site_id);
+
     List<Page> findBySite_id(int site_id);
 }

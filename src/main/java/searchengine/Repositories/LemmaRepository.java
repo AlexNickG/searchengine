@@ -21,4 +21,6 @@ public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
     List<Lemma> findByLemma(String lemma); //two sites may have the same lemma
 
     Lemma findByLemmaAndSite_Id(String lemma, int siteId);
+
+    List<Lemma> findBySite_id(int site_id);
 }

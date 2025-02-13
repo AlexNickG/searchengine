@@ -42,6 +42,7 @@ import java.util.stream.Collectors;
 public class IndexingServiceImpl implements IndexingService {
     private int cores = Runtime.getRuntime().availableProcessors();
     private ExecutorService executor;
+    //private ForkJoinPool pool;
     private final SitesList sites;
     private Site site = new Site();
     private List<Site> sitesList = new ArrayList<>();
@@ -52,9 +53,9 @@ public class IndexingServiceImpl implements IndexingService {
     private final LemmaFinder lemmaFinder;
     public static ConcurrentSkipListSet<String> globalLinksSet = new ConcurrentSkipListSet<>();
     public static volatile boolean stop;
-    public List<Thread> threadList = new ArrayList<>();
-    public List<ForkJoinTask<Void>> fjpList = new ArrayList<>();
-    private List<Future<Integer>> futureList = new ArrayList<>();
+//    public List<Thread> threadList = new ArrayList<>();
+//    public List<ForkJoinTask<Void>> fjpList = new ArrayList<>();
+//    private List<Future<Integer>> futureList = new ArrayList<>();
     private static volatile AtomicInteger counter = new AtomicInteger(0);
     long start;
     long start2;
@@ -71,32 +72,37 @@ public class IndexingServiceImpl implements IndexingService {
             return sendResponse(false, "Индексация уже запущена");
         }
 
-        threadList.clear();
-        if (executor != null) {
-            executor.shutdown();
-        }
+        //threadList.clear();
+//        if (executor != null) {
+//            executor.shutdown();
+//        }
         globalLinksSet.clear();
         stop = false;
-        clearDb();
-        executor = Executors.newFixedThreadPool(sites.getSites().size());
+        //clearDb();
+        if (executor == null) executor = Executors.newFixedThreadPool(sites.getSites().size());
         for (int i = 0; i < sites.getSites().size(); i++) {
-            threadList.add(new StartIndexing(i)); //How to start threads in ExecutorService?
+            executor.submit(new StartIndexing(i)); //How to start threads in ExecutorService?
         }
         start = System.currentTimeMillis();
-        for (Thread thread : threadList) {
-            thread.start();//TODO: Start threads thru ExecutorService
-        }
-        System.out.println("Started threads: " + threadList.size());
+//        for (Thread thread : threadList) {
+//            thread.start();//TODO: Start threads thru ExecutorService
+//        }
+       // log.info("Started threads: " + executor.);
         return sendResponse(true, "");
     }
 
     @Override
     public ResponseMessage stopIndexing() {
         List<Site> sites = siteRepository.findAll();
+
         if (sites.stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
-            for (Thread thread : threadList) {
-                thread.interrupt();
-            }
+            stop = true;
+            //if (StartIndexing.pool != null) { StartIndexing.pool.shutdownNow(); }
+            //if (executor != null) { executor.shutdownNow(); }
+            //log.info("executor.isShutdown");
+//            for (Thread thread : threadList) {
+//                thread.interrupt();
+//            }
             return sendResponse(true, "");
         } else {
             return sendResponse(false, "Индексация не запущена");
@@ -105,7 +111,8 @@ public class IndexingServiceImpl implements IndexingService {
 
     @Override
     public ResponseMessage addPageForIndexing(String url) {
-        String urlRegex = "[a-z0-9]+\\.[a-z]+/";
+        //String urlRegex = "[a-z0-9]+\\.[a-z]+/";
+        String urlRegex = "https?://[a-z0-9.-]+/";
         String cleanUrl = "";
         Pattern pattern = Pattern.compile(urlRegex);
         Matcher matcher = pattern.matcher(url);
@@ -154,7 +161,7 @@ public class IndexingServiceImpl implements IndexingService {
 //    }
 
     @RequiredArgsConstructor
-    public class StartIndexing extends Thread {
+    public class StartIndexing implements Runnable {
 
         private final int siteNumber;
 
@@ -167,50 +174,68 @@ public class IndexingServiceImpl implements IndexingService {
             site.setName(sites.getSites().get(siteNumber).getName());
             site.setStatusTime(LocalDateTime.now());
             siteRepository.save(site);
-            ForkJoinPool forkJoinPool = new ForkJoinPool();
-            globalLinksSet.add(link);
-            Indexing indexing = new Indexing(link, site);
-            fjpList.add(indexing);
-            ForkJoinTask<Void> task = forkJoinPool.submit(indexing);
 
-            do {
-                if (isInterrupted()) {
-                    System.out.println("Thread " + Thread.currentThread() + " have been interrupted");
-                    stop = true;
-                    forkJoinPool.shutdownNow();
-                }
-                if (task.isCompletedAbnormally()) { //TODO: what is abnormally?
-                    log.info("isTerminating: {}", forkJoinPool.isTerminating());
-                    log.error("Exception!: {}", task.getException().getMessage(), task.getException());
-                    site.setUrl(link);
-                    site.setStatus(Status.FAILED);
-                    site.setLastError("Индексация остановлена пользователем");
-                    site.setName(sites.getSites().get(siteNumber).getName());
-                    site.setStatusTime(LocalDateTime.now());
-                    siteRepository.saveAndFlush(site); //save vs saveAndFlush
-                    forkJoinPool.shutdown();
-                    log.info("the task was cancelled");
-                }
-                if (task.isCompletedNormally()) {
-                    log.info("indexSet size = {}", lemmaFinder.getIndexSet().size());
-                    site.setUrl(link);
-                    site.setStatus(Status.INDEXED);
-                    site.setName(sites.getSites().get(siteNumber).getName());
-                    site.setStatusTime(LocalDateTime.now());
-                    siteRepository.save(site);
-                    forkJoinPool.shutdown();
-                }
-            } while (!task.isDone());
+            try {
+                ForkJoinPool pool = new ForkJoinPool();
+                pool.invoke(new Indexing(link, site));
+//            globalLinksSet.add(link);
+                //Indexing indexing = ;
+//            fjpList.add(indexing);
+//            ForkJoinTask<Void> task = forkJoinPool.submit(indexing);
+
+                //while (true) {
+//                if (isInterrupted()) {
+//                    System.out.println("Thread " + Thread.currentThread() + " have been interrupted");
+//                    stop = true;
+//                    forkJoinPool.shutdownNow();
+//                }
+                    if (pool.isShutdown()) { //TODO: what is abnormally?
+                        log.info("isShutdown: {}", pool.isShutdown());
+//                    log.error("Exception!: {}", task.getException().getMessage(), task.getException());
+                        site.setUrl(link);
+                        site.setStatus(Status.FAILED);
+                        site.setLastError("Индексация остановлена пользователем");
+                        site.setName(sites.getSites().get(siteNumber).getName());
+                        site.setStatusTime(LocalDateTime.now());
+                        siteRepository.saveAndFlush(site); //save vs saveAndFlush
+//                        pool.close();
+//                        log.info("the task was cancelled");
+                        //break;
+                    } else if (pool.isQuiescent()) {
+                        log.info("indexSet size = {}", lemmaFinder.getIndexSet().size());
+                        site.setUrl(link);
+                        site.setStatus(Status.INDEXED);
+                        site.setName(sites.getSites().get(siteNumber).getName());
+                        site.setStatusTime(LocalDateTime.now());
+                        siteRepository.save(site);
+                        pool.shutdown();
+                        //break;
+                    } else {
+                        log.info("pool is stopped by some reason {}", pool.getPoolSize());
+                    }
+                //}
+            } catch (Exception e) {
+                log.error("Exception!: {}", e.getMessage(), e);
+                site.setUrl(link);
+                site.setStatus(Status.FAILED);
+                site.setLastError("Exception!");
+                site.setName(sites.getSites().get(siteNumber).getName());
+                site.setStatusTime(LocalDateTime.now());
+                siteRepository.save(site);
+            }
 
             counter.addAndGet(1);
-
-            if (counter.get() == sites.getSites().size()) {
+            if ((siteRepository.findAll()).stream().allMatch(s -> s.getStatus() == Status.INDEXED)) {
+                //return;
+            //}
+            //if (counter.get() == sites.getSites().size()) {
                 start2 = System.currentTimeMillis();
                 lemmaRepository.flush();
                 lemmaFinder.saveIndex();
                 log.info("Index saving took {} seconds", (System.currentTimeMillis() - start2) / 1000);
                 log.info("Parsing took {} seconds", (System.currentTimeMillis() - start) / 1000);
                 counter.set(0);
+//                if (executor != null) { executor.shutdown(); }
             }
         }
     }
@@ -230,6 +255,9 @@ public class IndexingServiceImpl implements IndexingService {
 
         @Override
         protected void compute() {
+
+            globalLinksSet.add(link);
+
             try {
                 Thread.sleep(timeout);
             } catch (InterruptedException e) {
@@ -259,14 +287,16 @@ public class IndexingServiceImpl implements IndexingService {
             if (IndexingServiceImpl.stop) {
                 log.info("linksSet.clear()");
                 linksSet.clear();
+                if (getPool() != null) { getPool().shutdownNow(); }
+//                return;
             }
 
             linksSet.removeAll(IndexingServiceImpl.globalLinksSet);
             IndexingServiceImpl.globalLinksSet.addAll(linksSet);
 
-            if(linksSet.isEmpty()) {
-                return;
-            }
+//            if(linksSet.isEmpty()) {
+//                return;
+//            }
 
             for (String subLink : linksSet) {
                 Indexing parse = new Indexing(subLink, site);

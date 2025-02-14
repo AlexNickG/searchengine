@@ -88,7 +88,7 @@ public class SearchServiceImpl implements SearchService {
                     List<Lemma> finishLemmaList = new ArrayList<>();//TODO: проверить правильную работу для запроса "купить по безналичному расчету" DONE!
 
                     for (Lemma lemma : lemmaDbListExisted) {
-                        if (90 * lemma.getFrequency() / quantityPagesBySite < 91) //отношение количества страниц для каждой леммы к общему количеству страниц сайта
+                        if (100 * lemma.getFrequency() / quantityPagesBySite < 90) //отношение количества страниц для каждой леммы к общему количеству страниц сайта TODO: проверить логику
                             finishLemmaList.add(lemma);
                     }
                     sortedLemmaDbList = sortLemmasByFreq(finishLemmaList); //сортируем леммы в порядке увеличения частоты встречаемости

@@ -40,9 +40,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @ConfigurationProperties(prefix = "connection-settings")
 public class IndexingServiceImpl implements IndexingService {
-    private int cores = Runtime.getRuntime().availableProcessors();
+    //private int cores = Runtime.getRuntime().availableProcessors();
     private ExecutorService executor;
-    //private ForkJoinPool pool;
     private final SitesList sites;
     private Site site = new Site();
     private List<Site> sitesList = new ArrayList<>();
@@ -53,10 +52,11 @@ public class IndexingServiceImpl implements IndexingService {
     private final LemmaFinder lemmaFinder;
     public static ConcurrentSkipListSet<String> globalLinksSet = new ConcurrentSkipListSet<>();
     public static volatile boolean stop;
+    //private ForkJoinPool forkJoinPool = new ForkJoinPool();
 //    public List<Thread> threadList = new ArrayList<>();
 //    public List<ForkJoinTask<Void>> fjpList = new ArrayList<>();
 //    private List<Future<Integer>> futureList = new ArrayList<>();
-    private static volatile AtomicInteger counter = new AtomicInteger(0);
+    //private static volatile AtomicInteger counter = new AtomicInteger(0);
     long start;
     long start2;
     private String userAgent;
@@ -83,11 +83,13 @@ public class IndexingServiceImpl implements IndexingService {
         for (int i = 0; i < sites.getSites().size(); i++) {
             executor.submit(new StartIndexing(i)); //How to start threads in ExecutorService?
         }
+        //if (forkJoinPool == null)
+        //forkJoinPool = new ForkJoinPool();
         start = System.currentTimeMillis();
 //        for (Thread thread : threadList) {
 //            thread.start();//TODO: Start threads thru ExecutorService
 //        }
-       // log.info("Started threads: " + executor.);
+        // log.info("Started threads: " + executor.);
         return sendResponse(true, "");
     }
 
@@ -103,6 +105,7 @@ public class IndexingServiceImpl implements IndexingService {
 //            for (Thread thread : threadList) {
 //                thread.interrupt();
 //            }
+            //getForkJoinPool().shutdownNow();
             return sendResponse(true, "");
         } else {
             return sendResponse(false, "Индексация не запущена");
@@ -162,7 +165,7 @@ public class IndexingServiceImpl implements IndexingService {
 
     @RequiredArgsConstructor
     public class StartIndexing implements Runnable {
-
+        ForkJoinPool forkJoinPool = new ForkJoinPool();
         private final int siteNumber;
 
         @Override
@@ -176,8 +179,7 @@ public class IndexingServiceImpl implements IndexingService {
             siteRepository.save(site);
 
             try {
-                ForkJoinPool pool = new ForkJoinPool();
-                pool.invoke(new Indexing(link, site));
+                forkJoinPool.invoke(new IndexingTask(link, site));
 //            globalLinksSet.add(link);
                 //Indexing indexing = ;
 //            fjpList.add(indexing);
@@ -189,52 +191,52 @@ public class IndexingServiceImpl implements IndexingService {
 //                    stop = true;
 //                    forkJoinPool.shutdownNow();
 //                }
-                    if (pool.isShutdown()) { //TODO: what is abnormally?
-                        log.info("isShutdown: {}", pool.isShutdown());
+                if (forkJoinPool.isShutdown() || forkJoinPool.isTerminated()) { //TODO: what is abnormally?
+                    log.info("isShutdown: {}", forkJoinPool.isShutdown());
 //                    log.error("Exception!: {}", task.getException().getMessage(), task.getException());
-                        site.setUrl(link);
-                        site.setStatus(Status.FAILED);
-                        site.setLastError("Индексация остановлена пользователем");
-                        site.setName(sites.getSites().get(siteNumber).getName());
-                        site.setStatusTime(LocalDateTime.now());
-                        siteRepository.saveAndFlush(site); //save vs saveAndFlush
+                    site.setUrl(link);
+                    site.setStatus(Status.FAILED);
+                    site.setLastError("Индексация остановлена пользователем");
+                    site.setName(sites.getSites().get(siteNumber).getName());
+                    site.setStatusTime(LocalDateTime.now());
+                    siteRepository.saveAndFlush(site); //save vs saveAndFlush
 //                        pool.close();
 //                        log.info("the task was cancelled");
-                        //break;
-                    } else if (pool.isQuiescent()) {
-                        log.info("indexSet size = {}", lemmaFinder.getIndexSet().size());
-                        site.setUrl(link);
-                        site.setStatus(Status.INDEXED);
-                        site.setName(sites.getSites().get(siteNumber).getName());
-                        site.setStatusTime(LocalDateTime.now());
-                        siteRepository.save(site);
-                        pool.shutdown();
-                        //break;
-                    } else {
-                        log.info("pool is stopped by some reason {}", pool.getPoolSize());
-                    }
+                    //break;
+                } else if (forkJoinPool.isQuiescent()) {
+                    log.info("indexSet size = {}", lemmaFinder.getIndexSet().size());
+                    site.setUrl(link);
+                    site.setStatus(Status.INDEXED);
+                    site.setName(sites.getSites().get(siteNumber).getName());
+                    site.setStatusTime(LocalDateTime.now());
+                    siteRepository.save(site);
+                    forkJoinPool.shutdown();
+                    //break;
+                } else {
+                    log.info("pool is stopped by some reason {}", forkJoinPool.getPoolSize());
+                }
                 //}
             } catch (Exception e) {
                 log.error("Exception!: {}", e.getMessage(), e);
                 site.setUrl(link);
                 site.setStatus(Status.FAILED);
-                site.setLastError("Exception!");
+                site.setLastError("Индексация остановлена пользователем");
                 site.setName(sites.getSites().get(siteNumber).getName());
                 site.setStatusTime(LocalDateTime.now());
                 siteRepository.save(site);
             }
 
-            counter.addAndGet(1);
+            //counter.addAndGet(1);
             if ((siteRepository.findAll()).stream().allMatch(s -> s.getStatus() == Status.INDEXED)) {
                 //return;
-            //}
-            //if (counter.get() == sites.getSites().size()) {
+                //}
+                //if (counter.get() == sites.getSites().size()) {
                 start2 = System.currentTimeMillis();
                 lemmaRepository.flush();
                 lemmaFinder.saveIndex();
                 log.info("Index saving took {} seconds", (System.currentTimeMillis() - start2) / 1000);
                 log.info("Parsing took {} seconds", (System.currentTimeMillis() - start) / 1000);
-                counter.set(0);
+                //counter.set(0);
 //                if (executor != null) { executor.shutdown(); }
             }
         }
@@ -242,13 +244,13 @@ public class IndexingServiceImpl implements IndexingService {
 
     @Getter
     @Setter
-    public class Indexing extends RecursiveAction {
+    public class IndexingTask extends RecursiveAction {
 
         private Site site;
         private String link;
-        private List<Indexing> taskList = new ArrayList<>();
+        private List<IndexingTask> subTaskList = new ArrayList<>();
 
-        public Indexing(String link, Site site) {
+        public IndexingTask(String link, Site site) {
             this.link = link;
             this.site = site;
         }
@@ -268,6 +270,7 @@ public class IndexingServiceImpl implements IndexingService {
             try {
                 document = connectToPageAndSaveIt(link, site, 0);
             } catch (InterruptedException | MalformedURLException | SQLException e) {
+                log.error("Exception occurred while connecting to the page: {}", e.getMessage());
                 throw new RuntimeException(e);
             }
 
@@ -287,7 +290,9 @@ public class IndexingServiceImpl implements IndexingService {
             if (IndexingServiceImpl.stop) {
                 log.info("linksSet.clear()");
                 linksSet.clear();
-                if (getPool() != null) { getPool().shutdownNow(); }
+                if (getPool() != null) {
+                    getPool().shutdownNow();
+                }
 //                return;
             }
 
@@ -299,11 +304,11 @@ public class IndexingServiceImpl implements IndexingService {
 //            }
 
             for (String subLink : linksSet) {
-                Indexing parse = new Indexing(subLink, site);
-                taskList.add(parse);
+                //IndexingTask parse = new IndexingTask(subLink, site);
+                subTaskList.add(new IndexingTask(subLink, site));
             }
-            ForkJoinTask.invokeAll(taskList);
-            taskList.forEach(Indexing::join);
+            invokeAll(subTaskList);
+            //subTaskList.forEach(IndexingTask::join);
         }
     }
 
@@ -319,29 +324,24 @@ public class IndexingServiceImpl implements IndexingService {
             content = document.toString();
             statusCode = connection.response().statusCode();
         } catch (HttpStatusException e) {
-            //statusCode = connection.response().statusCode();
             log.error("HTTP error fetching URL. Status: {}{}", e.getMessage(), link);
             document = null;
             content = "";
             statusCode = 404; //if server can't answer
         } catch (UnsupportedMimeTypeException e) {
-            //statusCode = connection.response().statusCode();
             log.error("Unsupported MIME type: {}{}", e.getMimeType(), link);
             return null;
         } catch (IOException e) {
-            //statusCode = connection.response().statusCode();
             log.error("IOException: {}{}", e.getMessage(), link);
             document = null;
             content = "";
             statusCode = 420; //if server can't answer
         } catch (IndexOutOfBoundsException e) {
-            //statusCode = connection.response().statusCode();
             log.error("IndexOutOfBoundsException: {}{}", e.getMessage(), link);
             document = null;
             content = "";
             statusCode = 425; //if server can't answer
         } catch (RuntimeException e) {
-            //statusCode = connection.response().statusCode();
             log.error("Caught RuntimeException: {}{}", e.getMessage(), link);
             document = null;
             content = "";
@@ -354,7 +354,7 @@ public class IndexingServiceImpl implements IndexingService {
             content = "";
             statusCode = 404; //if server can't answer
         }*/
-        if(method == 1) {
+        if (method == 1) {
             List<Page> pageList = pageRepository.findByPathAndSite_id(String.valueOf(new URL(link).getPath()), site.getId());
             if (!pageList.isEmpty()) {
                 page = pageList.get(0);

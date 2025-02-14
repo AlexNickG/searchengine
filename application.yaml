@@ -29,22 +29,22 @@ spring:
 
 indexing-settings:
   sites:
-    - url: https://playback.ru/
-      name: PlayBack.Ru
-    - url: https://nopaper.ru/
-      name: NoPaper.ru
+    #- url: https://playback.ru/
+    #  name: PlayBack.Ru
+    #- url: https://nopaper.ru/
+    #  name: NoPaper.ru
     - url:  https://nikoartgallery.com/
       name: Art gallery
     - url: https://et-cetera.ru/mobile/
       name: Theatre Et Cetera
     #- url: https://ipfran.ru/
     #  name: IPF RAN
-    #- url: https://dombulgakova.ru/
-    #  name: Dom Bulgakova
+    - url: https://dombulgakova.ru/
+      name: Dom Bulgakova
     #- url: https://ya.ru/
     #  name: Yandex
 
 connection-settings:
   userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 YaBrowser/24.12.0.0 Safari/537.36
-  referrer: http://google.com
+  referrer: http://localhost
   timeout: 550

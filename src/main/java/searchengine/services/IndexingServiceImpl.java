@@ -7,7 +7,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
 import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
-import org.jsoup.UnsupportedMimeTypeException;
 import org.jsoup.nodes.Document;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Service;
@@ -21,14 +20,12 @@ import searchengine.model.Page;
 import searchengine.model.Site;
 import searchengine.model.Status;
 
-import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -40,10 +37,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @ConfigurationProperties(prefix = "connection-settings")
 public class IndexingServiceImpl implements IndexingService {
-    //private int cores = Runtime.getRuntime().availableProcessors();
     private ExecutorService executor;
     private final SitesList sites;
-    private Site site = new Site();
     private List<Site> sitesList = new ArrayList<>();
     private final SiteRepository siteRepository;
     private final PageRepository pageRepository;
@@ -51,12 +46,9 @@ public class IndexingServiceImpl implements IndexingService {
     private final IndexRepository indexRepository;
     private final LemmaFinder lemmaFinder;
     public static ConcurrentSkipListSet<String> globalLinksSet = new ConcurrentSkipListSet<>();
+    public static final int INDEXING_WHOLE_SITE = 0;
+    public static final int INDEXING_ONE_PAGE = 1;
     public static volatile boolean stop;
-    //private ForkJoinPool forkJoinPool = new ForkJoinPool();
-//    public List<Thread> threadList = new ArrayList<>();
-//    public List<ForkJoinTask<Void>> fjpList = new ArrayList<>();
-//    private List<Future<Integer>> futureList = new ArrayList<>();
-    //private static volatile AtomicInteger counter = new AtomicInteger(0);
     long start;
     long start2;
     private String userAgent;
@@ -71,25 +63,18 @@ public class IndexingServiceImpl implements IndexingService {
         if (indexingSites.stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
             return sendResponse(false, "Индексация уже запущена");
         }
-
-        //threadList.clear();
-//        if (executor != null) {
-//            executor.shutdown();
-//        }
         globalLinksSet.clear();
         stop = false;
         //clearDb();
         if (executor == null) executor = Executors.newFixedThreadPool(sites.getSites().size());
         for (int i = 0; i < sites.getSites().size(); i++) {
-            executor.submit(new StartIndexing(i)); //How to start threads in ExecutorService?
+            try {
+                executor.submit(new StartIndexing(i));
+            } catch (MalformedURLException e) {
+                throw new RuntimeException(e);
+            }
         }
-        //if (forkJoinPool == null)
-        //forkJoinPool = new ForkJoinPool();
         start = System.currentTimeMillis();
-//        for (Thread thread : threadList) {
-//            thread.start();//TODO: Start threads thru ExecutorService
-//        }
-        // log.info("Started threads: " + executor.);
         return sendResponse(true, "");
     }
 
@@ -99,13 +84,6 @@ public class IndexingServiceImpl implements IndexingService {
 
         if (sites.stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
             stop = true;
-            //if (StartIndexing.pool != null) { StartIndexing.pool.shutdownNow(); }
-            //if (executor != null) { executor.shutdownNow(); }
-            //log.info("executor.isShutdown");
-//            for (Thread thread : threadList) {
-//                thread.interrupt();
-//            }
-            //getForkJoinPool().shutdownNow();
             return sendResponse(true, "");
         } else {
             return sendResponse(false, "Индексация не запущена");
@@ -114,39 +92,32 @@ public class IndexingServiceImpl implements IndexingService {
 
     @Override
     public ResponseMessage addPageForIndexing(String url) {
-        //String urlRegex = "[a-z0-9]+\\.[a-z]+/";
-        String urlRegex = "https?://[a-z0-9.-]+/";
+        String urlRegex = "[a-z0-9]+\\.[a-z]+";
         String cleanUrl = "";
         Pattern pattern = Pattern.compile(urlRegex);
         Matcher matcher = pattern.matcher(url);
         while (matcher.find()) {
             cleanUrl = matcher.group();
         }
-        String finalCleanUrl = cleanUrl; //TODO: optimize it
+        String finalCleanUrl = cleanUrl;
 
         Optional<searchengine.config.Site> optionalSite = sites.getSites().stream().filter(s -> s.getUrl().contains(finalCleanUrl)).findFirst();
         if (optionalSite.isEmpty() || finalCleanUrl.isEmpty()) {
             return sendResponse(false, "Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
         }
-        site = siteRepository.findByUrl(optionalSite.get().getUrl());
-        if (site == null) {
-            site = new Site();
-        }
-        site.setUrl(optionalSite.get().getUrl());
-        site.setName(optionalSite.get().getName());
-        site.setStatus(Status.INDEXING);
-        site.setStatusTime(LocalDateTime.now());
-        siteRepository.save(site);
+        Site site = siteRepository.findByUrl(optionalSite.get().getUrl());
+        if (site == null) site = new Site();
+        setSiteStatus(site, Status.INDEXING, "");
+
         try {
-            connectToPageAndSaveIt(url, site, 1);
-            //saveOnePage(url, site);
+            if (connectToPageAndSaveIt(url, site, INDEXING_ONE_PAGE) == null)
+                return sendResponse(false, "Данная страница недоступна");
         } catch (InterruptedException | MalformedURLException | SQLException e) {
             throw new RuntimeException(e);
         }
         lemmaFinder.saveIndex();
-        site.setStatus(Status.INDEXED);
-        site.setStatusTime(LocalDateTime.now());
-        siteRepository.save(site);
+        setSiteStatus(site, Status.INDEXED, "");
+
         return sendResponse(true, "");//По ТЗ формат ответа не использует поле error; можно ли отправить пустое сообщение?
     }
 
@@ -157,166 +128,18 @@ public class IndexingServiceImpl implements IndexingService {
         return responseMessage;
     }
 
-//    public ResponseMessage sendResponse(boolean result) {
-//        ResponseMessage responseMessage = new ResponseMessage();
-//        responseMessage.setResult(result);
-//        return responseMessage;
-//    }
-
-    @RequiredArgsConstructor
-    public class StartIndexing implements Runnable {
-        ForkJoinPool forkJoinPool = new ForkJoinPool();
-        private final int siteNumber;
-
-        @Override
-        public void run() {
-            String link = sites.getSites().get(siteNumber).getUrl();
-            Site site = new Site();
-            site.setUrl(link);
-            site.setStatus(Status.INDEXING);
-            site.setName(sites.getSites().get(siteNumber).getName());
-            site.setStatusTime(LocalDateTime.now());
-            siteRepository.save(site);
-
-            try {
-                forkJoinPool.invoke(new IndexingTask(link, site));
-//            globalLinksSet.add(link);
-                //Indexing indexing = ;
-//            fjpList.add(indexing);
-//            ForkJoinTask<Void> task = forkJoinPool.submit(indexing);
-
-                //while (true) {
-//                if (isInterrupted()) {
-//                    System.out.println("Thread " + Thread.currentThread() + " have been interrupted");
-//                    stop = true;
-//                    forkJoinPool.shutdownNow();
-//                }
-                if (forkJoinPool.isShutdown() || forkJoinPool.isTerminated()) { //TODO: what is abnormally?
-                    log.info("isShutdown: {}", forkJoinPool.isShutdown());
-//                    log.error("Exception!: {}", task.getException().getMessage(), task.getException());
-                    site.setUrl(link);
-                    site.setStatus(Status.FAILED);
-                    site.setLastError("Индексация остановлена пользователем");
-                    site.setName(sites.getSites().get(siteNumber).getName());
-                    site.setStatusTime(LocalDateTime.now());
-                    siteRepository.saveAndFlush(site); //save vs saveAndFlush
-//                        pool.close();
-//                        log.info("the task was cancelled");
-                    //break;
-                } else if (forkJoinPool.isQuiescent()) {
-                    log.info("indexSet size = {}", lemmaFinder.getIndexSet().size());
-                    site.setUrl(link);
-                    site.setStatus(Status.INDEXED);
-                    site.setName(sites.getSites().get(siteNumber).getName());
-                    site.setStatusTime(LocalDateTime.now());
-                    siteRepository.save(site);
-                    forkJoinPool.shutdown();
-                    //break;
-                } else {
-                    log.info("pool is stopped by some reason {}", forkJoinPool.getPoolSize());
-                }
-                //}
-            } catch (Exception e) {
-                log.error("Exception!: {}", e.getMessage(), e);
-                site.setUrl(link);
-                site.setStatus(Status.FAILED);
-                site.setLastError("Индексация остановлена пользователем");
-                site.setName(sites.getSites().get(siteNumber).getName());
-                site.setStatusTime(LocalDateTime.now());
-                siteRepository.save(site);
-            }
-
-            //counter.addAndGet(1);
-            if ((siteRepository.findAll()).stream().allMatch(s -> s.getStatus() == Status.INDEXED)) {
-                //return;
-                //}
-                //if (counter.get() == sites.getSites().size()) {
-                start2 = System.currentTimeMillis();
-                lemmaRepository.flush();
-                lemmaFinder.saveIndex();
-                log.info("Index saving took {} seconds", (System.currentTimeMillis() - start2) / 1000);
-                log.info("Parsing took {} seconds", (System.currentTimeMillis() - start) / 1000);
-                //counter.set(0);
-//                if (executor != null) { executor.shutdown(); }
-            }
-        }
+    public void setSiteStatus(Site site, Status status, String lastError) {
+        site.setStatus(status);
+        site.setLastError(lastError);
+        site.setStatusTime(LocalDateTime.now());
+        siteRepository.saveAndFlush(site);
     }
 
-    @Getter
-    @Setter
-    public class IndexingTask extends RecursiveAction {
-
-        private Site site;
-        private String link;
-        private List<IndexingTask> subTaskList = new ArrayList<>();
-
-        public IndexingTask(String link, Site site) {
-            this.link = link;
-            this.site = site;
-        }
-
-        @Override
-        protected void compute() {
-
-            globalLinksSet.add(link);
-
-            try {
-                Thread.sleep(timeout);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-
-            Document document;
-            try {
-                document = connectToPageAndSaveIt(link, site, 0);
-            } catch (InterruptedException | MalformedURLException | SQLException e) {
-                log.error("Exception occurred while connecting to the page: {}", e.getMessage());
-                throw new RuntimeException(e);
-            }
-
-            if (document == null) {
-                return;
-            }
-            Set<String> linksSet = document.select("a").stream()
-                    .map(e -> e.attr("abs:href"))
-                    .filter(e -> e.contains(site.getUrl())
-                            && !e.contains("#") //TODO: add to config
-                            && !e.endsWith(".jpg")
-                            && !e.endsWith(".pdf")
-                            && !e.endsWith(".png")
-                            && !e.contains("?"))
-                    .collect(Collectors.toSet());
-
-            if (IndexingServiceImpl.stop) {
-                log.info("linksSet.clear()");
-                linksSet.clear();
-                if (getPool() != null) {
-                    getPool().shutdownNow();
-                }
-//                return;
-            }
-
-            linksSet.removeAll(IndexingServiceImpl.globalLinksSet);
-            IndexingServiceImpl.globalLinksSet.addAll(linksSet);
-
-//            if(linksSet.isEmpty()) {
-//                return;
-//            }
-
-            for (String subLink : linksSet) {
-                //IndexingTask parse = new IndexingTask(subLink, site);
-                subTaskList.add(new IndexingTask(subLink, site));
-            }
-            invokeAll(subTaskList);
-            //subTaskList.forEach(IndexingTask::join);
-        }
-    }
-
-    public Document connectToPageAndSaveIt(String link, Site site, int method) throws InterruptedException, MalformedURLException, SQLException {
+     public Document connectToPageAndSaveIt(String link, Site site, int method) throws InterruptedException, MalformedURLException, SQLException {
         Thread.sleep(timeout);
         Connection connection = Jsoup.connect(link).ignoreHttpErrors(true).followRedirects(false);
         Document document;
-        String content;
+        String content = "";
         Page page = new Page();
         int statusCode;
         try {
@@ -326,81 +149,120 @@ public class IndexingServiceImpl implements IndexingService {
         } catch (HttpStatusException e) {
             log.error("HTTP error fetching URL. Status: {}{}", e.getMessage(), link);
             document = null;
-            content = "";
             statusCode = 404; //if server can't answer
-        } catch (UnsupportedMimeTypeException e) {
-            log.error("Unsupported MIME type: {}{}", e.getMimeType(), link);
+        } catch (Exception e) {
+            log.error("Exception: {}{}", e.getMessage(), link);
             return null;
-        } catch (IOException e) {
-            log.error("IOException: {}{}", e.getMessage(), link);
-            document = null;
-            content = "";
-            statusCode = 420; //if server can't answer
-        } catch (IndexOutOfBoundsException e) {
-            log.error("IndexOutOfBoundsException: {}{}", e.getMessage(), link);
-            document = null;
-            content = "";
-            statusCode = 425; //if server can't answer
-        } catch (RuntimeException e) {
-            log.error("Caught RuntimeException: {}{}", e.getMessage(), link);
-            document = null;
-            content = "";
-            statusCode = 430; //if server can't answer
-            e.printStackTrace(); // Log the stack trace for debugging
         }
-        /*} catch (Exception e) {
-            log.error("IOException occurred while connecting to the page: {}", e.getMessage());
-            document = null;
-            content = "";
-            statusCode = 404; //if server can't answer
-        }*/
-        if (method == 1) {
-            List<Page> pageList = pageRepository.findByPathAndSite_id(String.valueOf(new URL(link).getPath()), site.getId());
-            if (!pageList.isEmpty()) {
-                page = pageList.get(0);
-            }
-        }
+        if (method == INDEXING_ONE_PAGE)
+            page = pageRepository.findByPathAndSite_id(link, site.getId());
 
         page.setSite(site);
+         if (link.endsWith("/")) link = link.substring(0, (link.length() - 1));
         page.setPath(new URL(link).getPath());
         page.setCode(statusCode);
         page.setContent(content);
-        int pageId = pageRepository.save(page).getId();
-        lemmaFinder.collectLemmas(pageId);//why does the location where this method is called have no effect?
+        lemmaFinder.collectLemmas(pageRepository.save(page).getId());
         site.setStatusTime(LocalDateTime.now());
-        siteRepository.save(site);
+        siteRepository.saveAndFlush(site);
         return document;
     }
 
-//    public void saveOnePage(String link, Site site) throws InterruptedException, MalformedURLException, SQLException {
-//        Thread.sleep(timeout);
-//        Connection connection = Jsoup.connect(link).ignoreHttpErrors(true);
-//        Document document;
-//        String content;
-//        Page page = new Page();
-//        int statusCode;
-//        try {
-//            document = connection.userAgent(userAgent).referrer(referrer).get();
-//            content = document.toString();
-//            statusCode = connection.response().statusCode();
-//        } catch (IOException e) {
-//            document = null;
-//            content = "";
-//            statusCode = 404; //if server can't answer
-//        }
-//        List<Page> pageList = pageRepository.findByPath(String.valueOf(new URL(link).getPath()));
-//        if (!pageList.isEmpty()) {
-//            page = pageList.get(0);
-//        }
-//        page.setSite(site);
-//        page.setPath(new URL(link).getPath());
-//        page.setCode(statusCode);
-//        page.setContent(content);
-//        int pageId = pageRepository.save(page).getId();
-//        lemmaFinder.collectLemmas(pageId);//why does the location where this method is called have no effect?
-//        site.setStatusTime(LocalDateTime.now());
-//        siteRepository.save(site);
-//    }
+
+    public class StartIndexing implements Runnable {
+        private final ForkJoinPool forkJoinPool = new ForkJoinPool();
+        private final Site site = new Site();
+        private final StringBuilder linkBuild = new StringBuilder();
+        private final int siteNumber;
+        private final URL siteURL;
+
+        public StartIndexing(int siteNumber) throws MalformedURLException {
+            this.siteNumber = siteNumber;
+            siteURL = new URL(sites.getSites().get(siteNumber).getUrl());
+        }
+
+        @Override
+        public void run() {
+            String siteName = sites.getSites().get(siteNumber).getName();
+
+            linkBuild.append(siteURL.getProtocol()).append("://").append(siteURL.getHost());
+            if (siteURL.getPath().length() > 1) linkBuild.append(siteURL.getPath());
+            //if (linkBuild.toString().endsWith("/")) linkBuild.deleteCharAt(linkBuild.length() - 1);
+            String link = linkBuild.toString();
+            site.setUrl(link);
+            site.setName(siteName);
+            setSiteStatus(site, Status.INDEXING, "");
+
+            try {
+                forkJoinPool.invoke(new IndexingTask(link, site));
+                if (forkJoinPool.isShutdown() || forkJoinPool.isTerminated()) { //what is the difference between isShutdown and isTerminated?
+                    log.info("isShutdown: {}", forkJoinPool.isShutdown());
+                    setSiteStatus(site, Status.FAILED, "Индексация остановлена пользователем");
+                } else if (forkJoinPool.isQuiescent()) {
+                    log.info("indexSet size = {}", lemmaFinder.getIndexSet().size());
+                    setSiteStatus(site, Status.INDEXED, "");
+                    forkJoinPool.shutdown();
+                } else {
+                    log.info("pool is stopped by some reason {}", forkJoinPool.getPoolSize());
+                    setSiteStatus(site, Status.FAILED, "Unknown error");
+                }
+            } catch (Exception e) {
+                log.error("Exception!: {}", e.getMessage(), e);
+                setSiteStatus(site, Status.FAILED, "Индексация остановлена пользователем");
+            }
+            if ((siteRepository.findAll()).stream().allMatch(s -> s.getStatus() == Status.INDEXED)) {
+                start2 = System.currentTimeMillis();
+                lemmaFinder.saveIndex();
+                log.info("Index saving took {} seconds", (System.currentTimeMillis() - start2) / 1000);
+                log.info("Parsing took {} seconds", (System.currentTimeMillis() - start) / 1000);
+            }
+        }
+    }
+
+    @Getter
+    @Setter
+    public class IndexingTask extends RecursiveAction {
+        private String link;
+        private Site site;
+        private List<IndexingTask> subTaskList = new ArrayList<>();
+
+        public IndexingTask(String link, Site site) {
+            this.link = link;
+            this.site = site;
+        }
+
+        @Override
+        protected void compute() {
+            globalLinksSet.add(link);
+            Document document;
+            try {
+                Thread.sleep(timeout);
+                document = connectToPageAndSaveIt(link, site, INDEXING_WHOLE_SITE);
+            } catch (InterruptedException | MalformedURLException | SQLException e) {
+                log.error("Error: {}", e.getMessage(), e);
+                return;
+            }
+            if (document == null) return;
+
+            Set<String> linksSet = document.select("a").stream()
+                    .map(e -> e.attr("abs:href"))
+                    .filter(e -> e.contains(site.getUrl())
+                            && !e.contains("#") //TODO: add to config
+                            && !e.endsWith(".jpg")
+                            && !e.endsWith(".pdf")
+                            && !e.endsWith(".png")
+                            && !e.contains("?"))
+                    .collect(Collectors.toSet());
+            if (IndexingServiceImpl.stop && getPool() != null) {
+                getPool().shutdownNow();
+                return;
+            }
+            linksSet.removeAll(IndexingServiceImpl.globalLinksSet);
+            IndexingServiceImpl.globalLinksSet.addAll(linksSet);
+            linksSet.forEach(subLink -> subTaskList.add(new IndexingTask(subLink, site)));
+            invokeAll(subTaskList);
+        }
+    }
 
     public void clearDb() {
         siteRepository.setForeignKeyCheckNull();

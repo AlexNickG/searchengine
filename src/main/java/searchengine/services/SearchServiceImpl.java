@@ -41,16 +41,19 @@ public class SearchServiceImpl implements SearchService {
         }
     }
 
-    private final List<SearchData> data = new ArrayList<>();
+    private List<SearchData> data;
     private SearchResponse searchResponse;
-    private List<Page> pageByLemmaAndSite = new ArrayList<>();
+//    private List<Page> pageByLemmaAndSite;
     private Map<Page, Float> rankedPagesMap = new LinkedHashMap<>();
     private List<Lemma> sortedLemmaDbList = new ArrayList<>();
 
     @Override
     public SearchResponse getSearchResult(String query, int offset, int limit, String site) {
-        searchResponse = new SearchResponse();
+
         if (offset == 0) {
+            searchResponse = new SearchResponse();
+            data = new ArrayList<>();
+            //pageByLemmaAndSite = new ArrayList<>();
             initializeSearch(query, site);
         }
         return paginateResults(offset, limit);
@@ -63,10 +66,10 @@ public class SearchServiceImpl implements SearchService {
         for (Site dbSite : siteList) {//для каждого сайта
             sortedLemmaDbList = filterAndSortLemmas(queryLemmasSet, dbSite);
             if (!sortedLemmaDbList.isEmpty()) {
-                getPagesByLemmasAndSite(sortedLemmaDbList);
+                getPagesByLemmas(sortedLemmaDbList);
             }
         }
-        if (pageByLemmaAndSite.isEmpty()) {
+        if (rankedPagesMap.isEmpty()) {
             searchResponse.setResult(false);
             searchResponse.setError("Nothing found");
         }else {
@@ -103,7 +106,8 @@ public class SearchServiceImpl implements SearchService {
                 .collect(Collectors.toList());
     }
 
-    private void getPagesByLemmasAndSite(List<Lemma> sortedLemmaDbList) {
+    private void getPagesByLemmas(List<Lemma> sortedLemmaDbList) {
+        List<Page> pageByLemmaAndSite = new ArrayList<>();
         for (Lemma lemma : sortedLemmaDbList) {
             if (pageByLemmaAndSite.isEmpty()) {
                 pageByLemmaAndSite.addAll(lemma.getPages());
@@ -114,11 +118,13 @@ public class SearchServiceImpl implements SearchService {
                 }
             }
         }
-    }
-
-    private void calculatePageRelevanceAndSort() {
         rankedPagesMap = pageByLemmaAndSite.stream()
                 .collect(Collectors.toMap(page -> page, page -> calcPageRelevance(page, sortedLemmaDbList)));
+        }
+
+    private void calculatePageRelevanceAndSort() {
+        //rankedPagesMap = pageByLemmaAndSite.stream()
+        //        .collect(Collectors.toMap(page -> page, page -> calcPageRelevance(page, sortedLemmaDbList)));
         float maxRank = rankedPagesMap.values().stream().max(Float::compare).orElse(0.1f);
         rankedPagesMap = rankedPagesMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue() / maxRank));
         rankedPagesMap = rankedPagesMap.entrySet().stream().sorted(Map.Entry.<Page, Float>comparingByValue().reversed()).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (oldValue, newValue) -> oldValue, LinkedHashMap::new));

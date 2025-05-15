@@ -7,6 +7,8 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.model.Index;
 
+import java.util.List;
+
 @Repository
 public interface IndexRepository extends JpaRepository<Index, Integer> {
 
@@ -20,4 +22,5 @@ public interface IndexRepository extends JpaRepository<Index, Integer> {
 //    void executeMultiInsert(String insertQuery);
 
     Index findByPageIdAndLemmaId(int pageId, int lemmaId);
+    List<Index> findByPageId(int pageId);
 }

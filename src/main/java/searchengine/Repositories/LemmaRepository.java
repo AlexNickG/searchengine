@@ -6,10 +6,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.model.Lemma;
-import searchengine.model.Page;
 
 import java.util.List;
-import java.util.Optional;
 
 @Repository
 public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
@@ -23,4 +21,9 @@ public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
     Lemma findByLemmaAndSite_Id(String lemma, int siteId);
 
     List<Lemma> findBySite_id(int site_id);
+
+    @Query("delete from Lemma l where l.id = ?1")
+    @Transactional
+    @Modifying
+    void deleteLemmaById(int id);
 }

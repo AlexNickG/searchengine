@@ -16,11 +16,14 @@ import searchengine.Repositories.PageRepository;
 import searchengine.Repositories.SiteRepository;
 import searchengine.config.SitesList;
 import searchengine.dto.statistics.ResponseMessage;
+import searchengine.model.Index;
 import searchengine.model.Page;
 import searchengine.model.Site;
 import searchengine.model.Status;
 
 import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
@@ -91,26 +94,43 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     @Override
-    public ResponseMessage addPageForIndexing(String url) {
-        String urlRegex = "[a-z0-9]+\\.[a-z]+";
-        String cleanUrl = "";
-        Pattern pattern = Pattern.compile(urlRegex);
-        Matcher matcher = pattern.matcher(url);
-        while (matcher.find()) {
-            cleanUrl = matcher.group();
+    public ResponseMessage addPageForIndexing(String link) {
+        String host;
+        try {
+            host = new URL(link).getHost();
+        } catch (MalformedURLException e) {
+            //log.error("MalformedURLException: {}", e.getMessage());
+            log.info("MalformedURLException: {}", e.getMessage());
+            //throw new RuntimeException(e);
+            return sendResponse(false, "Проверьте введенный адрес страницы");
         }
-        String finalCleanUrl = cleanUrl;
+//        String urlRegex = "[a-z0-9]+\\.[a-z]+";
+//        String cleanUrl = "";
+//        Pattern pattern = Pattern.compile(urlRegex);
+//        Matcher matcher = pattern.matcher(url);
+//        while (matcher.find()) {
+//            cleanUrl = matcher.group();
+//        }
+//        String finalCleanUrl = cleanUrl;
 
-        Optional<searchengine.config.Site> optionalSite = sites.getSites().stream().filter(s -> s.getUrl().contains(finalCleanUrl)).findFirst();
-        if (optionalSite.isEmpty() || finalCleanUrl.isEmpty()) {
+//        if (host == null) {
+//            return sendResponse(false, "Проверьте введенный адрес страницы");
+//        }
+                String finalHost = host;
+        Optional<searchengine.config.Site> optionalSite = sites.getSites().stream().filter(s -> s.getUrl().contains(finalHost)).findFirst();
+        if (optionalSite.isEmpty() || host.isEmpty()) {
             return sendResponse(false, "Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
         }
         Site site = siteRepository.findByUrl(optionalSite.get().getUrl());
-        if (site == null) site = new Site();
+        if (site == null) {
+            site = new Site();//TODO: вынести в метод createSiteEntity
+            site.setName(optionalSite.get().getName());
+            site.setUrl(optionalSite.get().getUrl());
+        }
         setSiteStatus(site, Status.INDEXING, "");
 
         try {
-            if (connectToPageAndSaveIt(url, site, INDEXING_ONE_PAGE) == null)
+            if (connectToPageAndSaveIt(link, site, INDEXING_ONE_PAGE) == null)//TODO: send page to indexing
                 return sendResponse(false, "Данная страница недоступна");
         } catch (InterruptedException | MalformedURLException | SQLException e) {
             throw new RuntimeException(e);
@@ -135,11 +155,12 @@ public class IndexingServiceImpl implements IndexingService {
         siteRepository.saveAndFlush(site);
     }
 
-     public Document connectToPageAndSaveIt(String link, Site site, int method) throws InterruptedException, MalformedURLException, SQLException {
+    public Document connectToPageAndSaveIt(String link, Site site, int method) throws InterruptedException, MalformedURLException, SQLException {//optimize method length
         Thread.sleep(timeout);
         Connection connection = Jsoup.connect(link).ignoreHttpErrors(true).followRedirects(false);
         Document document;
         String content = "";
+        String path = new URL(link).getPath();
         Page page = new Page();
         int statusCode;
         try {
@@ -154,12 +175,20 @@ public class IndexingServiceImpl implements IndexingService {
             log.error("Exception: {}{}", e.getMessage(), link);
             return null;
         }
-        if (method == INDEXING_ONE_PAGE)
-            page = pageRepository.findByPathAndSite_id(link, site.getId());
-
-        page.setSite(site);
-         if (link.endsWith("/")) link = link.substring(0, (link.length() - 1));
-        page.setPath(new URL(link).getPath());
+        if (method == INDEXING_ONE_PAGE) {
+            page = pageRepository.findByPathAndSite_id(path, site.getId());//TODO: if Page does not exist, create it. Done!
+            if (page == null) {
+                page = new Page();
+            } else {
+                List<Index> indexList = indexRepository.findByPageId(page.getId());//TODO: get all lemmas for this page and delete it in DB. Done!
+                if (indexList != null) {
+                    indexList.forEach(i -> lemmaRepository.deleteLemmaById(i.getLemmaId()));
+                    indexRepository.deleteAllInBatch(indexList);//TODO: check how it works
+                }
+            }
+        }
+        page.setSite(site);//TODO: при возможности отправлять в метод createPage(), чтобы не дублировать код
+        page.setPath(path);
         page.setCode(statusCode);
         page.setContent(content);
         lemmaFinder.collectLemmas(pageRepository.save(page).getId());
@@ -185,8 +214,8 @@ public class IndexingServiceImpl implements IndexingService {
         public void run() {
             String siteName = sites.getSites().get(siteNumber).getName();
 
-            linkBuild.append(siteURL.getProtocol()).append("://").append(siteURL.getHost());
-            if (siteURL.getPath().length() > 1) linkBuild.append(siteURL.getPath());
+            linkBuild.append(siteURL.getProtocol()).append("://").append(siteURL.getHost()).append("/");//TODO: переделать с использование класса URL
+            if (siteURL.getPath().length() > 1) linkBuild.append(siteURL.getPath());//если начинаем индексировать сайт не с корневой страницы
             //if (linkBuild.toString().endsWith("/")) linkBuild.deleteCharAt(linkBuild.length() - 1);
             String link = linkBuild.toString();
             site.setUrl(link);
@@ -238,7 +267,7 @@ public class IndexingServiceImpl implements IndexingService {
             try {
                 Thread.sleep(timeout);
                 document = connectToPageAndSaveIt(link, site, INDEXING_WHOLE_SITE);
-            } catch (InterruptedException | MalformedURLException | SQLException e) {
+            } catch (InterruptedException | MalformedURLException | SQLException e) {//TODO: разобраться с исключениями
                 log.error("Error: {}", e.getMessage(), e);
                 return;
             }

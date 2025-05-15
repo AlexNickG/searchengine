@@ -32,6 +32,7 @@ public class SearchServiceImpl implements SearchService {
     private final LemmaRepository lemmaRepository;
     private final IndexRepository indexRepository;
     private LuceneMorphology luceneMorph;
+    private LemmaFinder lemmaFinder;
 
     {
         try {
@@ -43,9 +44,8 @@ public class SearchServiceImpl implements SearchService {
 
     private List<SearchData> data;
     private SearchResponse searchResponse;
-//    private List<Page> pageByLemmaAndSite;
-    //private Map<Page, Float> rankedPagesMap = new LinkedHashMap<>();
-    private Map<Page, Float> pagesMapTotal;
+    //    private List<Page> pageByLemmaAndSite;
+    private Map<Page, Float> rankedPagesMap;
     private List<Lemma> sortedLemmaDbList = new ArrayList<>();
 
     @Override
@@ -54,7 +54,7 @@ public class SearchServiceImpl implements SearchService {
         if (offset == 0) {
             searchResponse = new SearchResponse();
             data = new ArrayList<>();
-            pagesMapTotal = new LinkedHashMap<>();
+            rankedPagesMap = new LinkedHashMap<>();
             //pageByLemmaAndSite = new ArrayList<>();
             initializeSearch(query, site);
         }
@@ -71,11 +71,11 @@ public class SearchServiceImpl implements SearchService {
                 getPagesByLemmas(sortedLemmaDbList);
             }
         }
-        if (pagesMapTotal.isEmpty()) {
+        if (rankedPagesMap.isEmpty()) {
             searchResponse.setResult(false);
             searchResponse.setError("Nothing found");
-        }else {
-            calcPageRelRelevanceAndSort();
+        } else {
+            calculatePageRelevanceAndSort();
             prepareSearchResponse();
         }
     }
@@ -85,9 +85,15 @@ public class SearchServiceImpl implements SearchService {
         String[] words = query.toLowerCase(Locale.ROOT).replaceAll("[^а-я0-9\\s]", " ").trim().split("\\s+");
 
         for (String word : words) {//TODO: посмотреть документацию метода getMorphInfo() библиотеки luceneMorph
-            String wordBaseForms = getWordMorphInfo(word); //Падает при поиске на латинице. Почему бы не брать первую форму слова и не проверять ее на отношение к частям речи?
-            if (!wordBaseForms.contains("СОЮЗ") && !wordBaseForms.contains("МЕЖД") && !wordBaseForms.contains("ПРЕДЛ") && !wordBaseForms.contains(" ЧАСТ")) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
-                queryLemmasSet.add(luceneMorph.getNormalForms(word).get(0));
+//            if (word) {//если слово - латиница, то использовать luceneMorph = new EnglishLuceneMorphology(), иначе - luceneMorph = new RussianLuceneMorphology();
+//
+//            }
+            if (!word.isEmpty()) {
+                //String wordBaseForms = getWordMorphInfo(word); //Падает при поиске на латинице. Почему бы не брать первую форму слова и не проверять ее на отношение к частям речи?
+                //if (!wordBaseForms.contains("СОЮЗ") && !wordBaseForms.contains("МЕЖД") && !wordBaseForms.contains("ПРЕДЛ") && !wordBaseForms.contains(" ЧАСТ")) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
+                if (lemmaFinder.isWordSignificant(word)) {
+                    queryLemmasSet.add(luceneMorph.getNormalForms(word).get(0));
+                }
             }
         }
         return queryLemmasSet;
@@ -110,33 +116,29 @@ public class SearchServiceImpl implements SearchService {
 
     private void getPagesByLemmas(List<Lemma> sortedLemmaDbList) {
         List<Page> pageByLemmaAndSite = new ArrayList<>();
-        Map<Page, Float> pagesMap = new HashMap<>();
         for (Lemma lemma : sortedLemmaDbList) {
             if (pageByLemmaAndSite.isEmpty()) {
                 pageByLemmaAndSite.addAll(lemma.getPages());
             } else {
-                pageByLemmaAndSite.retainAll(lemma.getPages());//TODO: проверять: если множества не пересекаются, суммировать их
+                pageByLemmaAndSite.retainAll(lemma.getPages());
                 if (pageByLemmaAndSite.isEmpty()) {
                     break;
                 }
             }
-            pagesMap = pageByLemmaAndSite.stream()
-                    .collect(Collectors.toMap(page -> page, page -> calcPageAbsRelevance(page, sortedLemmaDbList)));
         }
-        pagesMapTotal.putAll(pagesMap);
-        }
-
-    private void calcPageRelRelevanceAndSort() {
-        float maxRank = pagesMapTotal.values().stream()
-                .max(Float::compare).orElse(0.1f);
-        pagesMapTotal = pagesMapTotal.entrySet().stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue() / maxRank));
-        pagesMapTotal = pagesMapTotal.entrySet().stream()
-                .sorted(Map.Entry.<Page, Float>comparingByValue().reversed())
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (oldValue, newValue) -> oldValue, LinkedHashMap::new));
+        rankedPagesMap.putAll(pageByLemmaAndSite.stream()
+                .collect(Collectors.toMap(page -> page, page -> calcPageRelevance(page, sortedLemmaDbList))));
     }
 
-    private float calcPageAbsRelevance(Page page, List<Lemma> lemmaList) {
+    private void calculatePageRelevanceAndSort() {
+        //rankedPagesMap = pageByLemmaAndSite.stream()
+        //        .collect(Collectors.toMap(page -> page, page -> calcPageRelevance(page, sortedLemmaDbList)));
+        float maxRank = rankedPagesMap.values().stream().max(Float::compare).orElse(0.1f);
+        rankedPagesMap = rankedPagesMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue() / maxRank));
+        rankedPagesMap = rankedPagesMap.entrySet().stream().sorted(Map.Entry.<Page, Float>comparingByValue().reversed()).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (oldValue, newValue) -> oldValue, LinkedHashMap::new));
+    }
+
+    private float calcPageRelevance(Page page, List<Lemma> lemmaList) {
         return page.getLemmas().stream()
                 .filter(lemmaList::contains)
                 .map(lemma -> indexRepository.findByPageIdAndLemmaId(page.getId(), lemma.getId()).getRank())
@@ -144,7 +146,7 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private void prepareSearchResponse() {
-        pagesMapTotal.forEach((page, relevance) -> {
+        rankedPagesMap.forEach((page, relevance) -> {
             Document doc = Jsoup.parse(page.getContent());
             List<String> text = Arrays.stream(doc.body().text().toLowerCase(Locale.ROOT).replaceAll("[^а-я0-9\\s]", " ").trim().split("\\s+")).toList();
             SearchData searchData = new SearchData();
@@ -161,7 +163,7 @@ public class SearchServiceImpl implements SearchService {
         searchResponse.setCount(data.size());
     }
 
-    private SearchResponse paginateResults (int offset, int limit) {
+    private SearchResponse paginateResults(int offset, int limit) {
         if (offset + limit > data.size()) {
             limit = data.size() - offset;
         }
@@ -169,7 +171,7 @@ public class SearchServiceImpl implements SearchService {
         return searchResponse;
     }
 
-    private String getSnippet(List<Lemma> queryLemmasList, List<String> text) {
+    private String getSnippet(List<Lemma> queryLemmasList, List<String> text) {//TODO: 1) разобраться; 2) заменить на метод getWordNormalForm библиотеки luceneMorph
         Map<List<String>, Integer> snippetList = new HashMap<>();
         for (String word : text) {
             for (Lemma lemmaWord : queryLemmasList) {
@@ -192,11 +194,11 @@ public class SearchServiceImpl implements SearchService {
         List<String> queryWordsList = queryLemmasList.stream().map(Lemma::getLemma).toList();
 
         return "..." + words.stream()
-                .map(word -> queryWordsList.contains(getWordNormalForm(word.toLowerCase(Locale.ROOT))) ? "<b>" + word + "</b>" : word)
+                .map(word -> queryWordsList.contains(getWordNormalForm(word.toLowerCase(Locale.ROOT))) ? "<b>" + word + "</b>" : word)//TODO: заменить на метод getWordNormalForm библиотеки luceneMorph
                 .collect(Collectors.joining(" ")) + "...";
     }
 
-    private String getWordMorphInfo(String word) {
+    private String getWordMorphInfo(String word) {//TODO: зачем?
         try {
             return luceneMorph.getMorphInfo(word).get(0);
         } catch (WrongCharaterException wce) {
@@ -204,7 +206,7 @@ public class SearchServiceImpl implements SearchService {
         }
     }
 
-    private String getWordNormalForm(String word) {
+    private String getWordNormalForm(String word) {//TODO: зачем?
         try {
             return luceneMorph.getNormalForms(word).get(0);
         } catch (Exception e) {

@@ -3,7 +3,6 @@ package searchengine.services;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.lucene.morphology.LuceneMorphology;
-import org.apache.lucene.morphology.WrongCharaterException;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -32,7 +31,7 @@ public class SearchServiceImpl implements SearchService {
     private final LemmaRepository lemmaRepository;
     private final IndexRepository indexRepository;
     private LuceneMorphology luceneMorph;
-    private LemmaFinder lemmaFinder;
+    private LemmaFinder lemmaFinder;//TODO: Почему is never assigned?
 
     {
         try {
@@ -44,7 +43,6 @@ public class SearchServiceImpl implements SearchService {
 
     private List<SearchData> data;
     private SearchResponse searchResponse;
-    //    private List<Page> pageByLemmaAndSite;
     private Map<Page, Float> rankedPagesMap;
     private List<Lemma> sortedLemmaDbList = new ArrayList<>();
 
@@ -55,14 +53,12 @@ public class SearchServiceImpl implements SearchService {
             searchResponse = new SearchResponse();
             data = new ArrayList<>();
             rankedPagesMap = new LinkedHashMap<>();
-            //pageByLemmaAndSite = new ArrayList<>();
             initializeSearch(query, site);
         }
         return paginateResults(offset, limit);
     }
 
     private void initializeSearch(String query, String site) {
-        //searchResponse = new SearchResponse();
         Set<String> queryLemmasSet = extractQueryLemmas(query);
         List<Site> siteList = (site == null) ? siteRepository.findAll() : Collections.singletonList(siteRepository.findByUrl(site));
         for (Site dbSite : siteList) {//для каждого сайта
@@ -84,24 +80,14 @@ public class SearchServiceImpl implements SearchService {
         Set<String> queryLemmasSet = new HashSet<>();
         String[] words = query.toLowerCase(Locale.ROOT).replaceAll("[^а-я0-9\\s]", " ").trim().split("\\s+");
 
-        for (String word : words) {//TODO: посмотреть документацию метода getMorphInfo() библиотеки luceneMorph
-//            if (word) {//если слово - латиница, то использовать luceneMorph = new EnglishLuceneMorphology(), иначе - luceneMorph = new RussianLuceneMorphology();
-//
-//            }
+        for (String word : words) {
             if (!word.isEmpty()) {
-                //String wordBaseForms = getWordMorphInfo(word); //Падает при поиске на латинице. Почему бы не брать первую форму слова и не проверять ее на отношение к частям речи?
-                //if (!wordBaseForms.contains("СОЮЗ") && !wordBaseForms.contains("МЕЖД") && !wordBaseForms.contains("ПРЕДЛ") && !wordBaseForms.contains(" ЧАСТ")) {//TODO: 1) add to array and check in cycle; 2) remove words of three letters or less
                 if (lemmaFinder.isWordSignificant(word)) {
                     queryLemmasSet.add(luceneMorph.getNormalForms(word).get(0));
                 }
             }
         }
         return queryLemmasSet;
-        /*Arrays.stream(query.toLowerCase(Locale.ROOT).replaceAll("[^а-я0-9\\s]", " ").trim().split("\\s+"))
-                .map(this::getWordMorphInfo)
-                .filter(word -> !luceneMorph.getMorphInfo(word).get(0).contains("СОЮЗ") && !luceneMorph.getMorphInfo(word).get(0).contains("МЕЖД") && !luceneMorph.getMorphInfo(word).get(0).contains("ПРЕДЛ") && !luceneMorph.getMorphInfo(word).get(0).contains(" ЧАСТ"))
-                .map(word -> luceneMorph.getNormalForms(word).get(0))
-                .collect(Collectors.toSet());*/
     }
 
     private List<Lemma> filterAndSortLemmas(Set<String> queryLemmasSet, Site dbSite) {
@@ -131,8 +117,6 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private void calculatePageRelevanceAndSort() {
-        //rankedPagesMap = pageByLemmaAndSite.stream()
-        //        .collect(Collectors.toMap(page -> page, page -> calcPageRelevance(page, sortedLemmaDbList)));
         float maxRank = rankedPagesMap.values().stream().max(Float::compare).orElse(0.1f);
         rankedPagesMap = rankedPagesMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue() / maxRank));
         rankedPagesMap = rankedPagesMap.entrySet().stream().sorted(Map.Entry.<Page, Float>comparingByValue().reversed()).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (oldValue, newValue) -> oldValue, LinkedHashMap::new));
@@ -196,14 +180,6 @@ public class SearchServiceImpl implements SearchService {
         return "..." + words.stream()
                 .map(word -> queryWordsList.contains(getWordNormalForm(word.toLowerCase(Locale.ROOT))) ? "<b>" + word + "</b>" : word)//TODO: заменить на метод getWordNormalForm библиотеки luceneMorph
                 .collect(Collectors.joining(" ")) + "...";
-    }
-
-    private String getWordMorphInfo(String word) {//TODO: зачем?
-        try {
-            return luceneMorph.getMorphInfo(word).get(0);
-        } catch (WrongCharaterException wce) {
-            return word;
-        }
     }
 
     private String getWordNormalForm(String word) {//TODO: зачем?

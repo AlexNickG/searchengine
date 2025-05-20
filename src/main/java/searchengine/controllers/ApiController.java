@@ -9,12 +9,10 @@ import searchengine.Repositories.IndexRepository;
 import searchengine.Repositories.LemmaRepository;
 import searchengine.Repositories.PageRepository;
 import searchengine.Repositories.SiteRepository;
-import searchengine.config.Config;
 import searchengine.dto.search.SearchResponse;
 import searchengine.dto.statistics.ResponseMessage;
 import searchengine.dto.statistics.StatisticsResponse;
 import searchengine.services.IndexingService;
-import searchengine.services.IndexingServiceImpl;
 import searchengine.services.SearchService;
 import searchengine.services.StatisticsService;
 
@@ -33,22 +31,43 @@ public class ApiController {
 
     @GetMapping("/statistics")
     public ResponseEntity<StatisticsResponse> statistics() {
-        return new ResponseEntity<>(statisticsService.getStatistics(), HttpStatus.OK);
+        StatisticsResponse responseMessage = statisticsService.getStatistics();
+        if (responseMessage.isResult()) {
+            return new ResponseEntity<>(responseMessage, HttpStatus.OK);
+        } else {
+            return new ResponseEntity<>(responseMessage, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 
     @GetMapping("/startIndexing")
     public ResponseEntity<ResponseMessage> startIndexing() {
-        return new ResponseEntity<>(indexingService.startIndexing(), HttpStatus.OK);
+        ResponseMessage responseMessage = indexingService.startIndexing();
+        if (responseMessage.isResult()) {
+            return new ResponseEntity<>(responseMessage, HttpStatus.OK);
+        } else {
+            return new ResponseEntity<>(responseMessage, HttpStatus.BAD_REQUEST);
+        }
     }
 
     @GetMapping("/stopIndexing")
     public ResponseEntity<ResponseMessage> stopIndexing() {
-        return new ResponseEntity<>(indexingService.stopIndexing(), HttpStatus.OK);
+        ResponseMessage responseMessage = indexingService.stopIndexing();
+        if (responseMessage.isResult()) {
+            return new ResponseEntity<>(responseMessage, HttpStatus.OK);
+        } else {
+            return new ResponseEntity<>(responseMessage, HttpStatus.BAD_REQUEST);
+        }
     }
 
     @PostMapping("/indexPage")
     public ResponseEntity<ResponseMessage> indexPage(@RequestParam String url) {
-       return new ResponseEntity<>(indexingService.addPageForIndexing(url), HttpStatus.OK); //CREATED
+        ResponseMessage responseMessage = indexingService.addPageForIndexing(url);
+        if (responseMessage.isResult()) {
+            return new ResponseEntity<>(responseMessage, HttpStatus.OK); //CREATED
+        } else {
+            return new ResponseEntity<>(responseMessage, HttpStatus.NOT_FOUND);
+        }
+
     }
 
     @DeleteMapping("/deleteAll")

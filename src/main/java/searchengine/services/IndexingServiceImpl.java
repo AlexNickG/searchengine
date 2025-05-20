@@ -14,6 +14,7 @@ import searchengine.Repositories.IndexRepository;
 import searchengine.Repositories.LemmaRepository;
 import searchengine.Repositories.PageRepository;
 import searchengine.Repositories.SiteRepository;
+import searchengine.config.Config;
 import searchengine.config.SitesList;
 import searchengine.dto.statistics.ResponseMessage;
 import searchengine.model.Index;
@@ -21,6 +22,7 @@ import searchengine.model.Page;
 import searchengine.model.Site;
 import searchengine.model.Status;
 
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.sql.SQLException;
@@ -44,6 +46,7 @@ public class IndexingServiceImpl implements IndexingService {
     private final LemmaRepository lemmaRepository;
     private final IndexRepository indexRepository;
     private final LemmaFinder lemmaFinder;
+    private final Config config;
     public static ConcurrentSkipListSet<String> globalLinksSet = new ConcurrentSkipListSet<>();
     public static final int INDEXING_WHOLE_SITE = 0;
     public static final int INDEXING_ONE_PAGE = 1;
@@ -89,8 +92,6 @@ public class IndexingServiceImpl implements IndexingService {
         }
     }
 
-
-
     public class StartIndexing implements Runnable {
         private final ForkJoinPool forkJoinPool = new ForkJoinPool();
         private final Site site = new Site();
@@ -109,7 +110,7 @@ public class IndexingServiceImpl implements IndexingService {
             site.setName(siteName);
             setSiteStatus(site, Status.INDEXING, "");
 
-            try {
+            try {//TODO: разобраться с ошибками
                 forkJoinPool.invoke(new IndexingTask(siteURL, site));
                 if (forkJoinPool.isShutdown() || forkJoinPool.isTerminated()) { //what is the difference between isShutdown and isTerminated?
                     log.info("isShutdown: {}", forkJoinPool.isShutdown());
@@ -123,7 +124,7 @@ public class IndexingServiceImpl implements IndexingService {
                     setSiteStatus(site, Status.FAILED, "Unknown error");
                 }
             } catch (Exception e) {
-                log.error("Exception!: {}", e.getMessage(), e);
+                log.error("Exception!: {}", e.getMessage(), e);//при нажатии кнопки "остановить индексацию" происходит CancellationException
                 setSiteStatus(site, Status.FAILED, "Индексация остановлена пользователем");
             }
             if ((siteRepository.findAll()).stream().allMatch(s -> s.getStatus() == Status.INDEXED)) {
@@ -154,7 +155,7 @@ public class IndexingServiceImpl implements IndexingService {
             try {
                 Thread.sleep(timeout);
                 document = connectToPageAndSaveIt(link, site, INDEXING_WHOLE_SITE);
-            } catch (InterruptedException | MalformedURLException | SQLException e) {//TODO: разобраться с исключениями
+            } catch (InterruptedException | MalformedURLException e) {//TODO: разобраться с исключениями
                 log.error("Error: {}", e.getMessage(), e);
                 return;
             }
@@ -163,11 +164,14 @@ public class IndexingServiceImpl implements IndexingService {
             Set<String> linksSet = document.select("a").stream()
                     .map(e -> e.attr("abs:href"))
                     .filter(e -> e.contains(site.getUrl())
-                            && !e.contains("#") //TODO: add to config
-                            && !e.endsWith(".jpg")
-                            && !e.endsWith(".pdf")
-                            && !e.endsWith(".png")
-                            && !e.contains("?"))
+                            && config.getFileExtensions().stream().noneMatch(e::endsWith)
+                            && config.getPathContaining().stream().noneMatch(e::contains))
+//                            && !e.contains("#") //TODO: add to config
+//                            && !e.endsWith(".jpg")
+//                            && !e.endsWith(".pdf")
+//                            && !e.endsWith(".png")
+//                            && !e.endsWith(".mp4")
+//                            && !e.contains("?"))
                     .collect(Collectors.toSet());
             if (IndexingServiceImpl.stop && getPool() != null) {
                 getPool().shutdownNow();
@@ -200,17 +204,21 @@ public class IndexingServiceImpl implements IndexingService {
         }
         setSiteStatus(site, Status.INDEXING, "");
         try {
-            if (connectToPageAndSaveIt(link, site, INDEXING_ONE_PAGE) == null)//TODO: send page to indexing
+            if (connectToPageAndSaveIt(link, site, INDEXING_ONE_PAGE) == null)
                 return sendResponse(false, "Данная страница недоступна");
-        } catch (InterruptedException | MalformedURLException | SQLException e) {//TODO: разобраться с исключениями
-            throw new RuntimeException(e);
+        } catch (InterruptedException e) {
+            log.error("Индексация прервана : {}", e.getMessage());
+            return sendResponse(false, "Индексация прервана");
+        } catch (MalformedURLException e) {
+            log.info("Неправильный адрес страницы: {}{}", e.getMessage(), link);
+            return sendResponse(false, "Неправильный адрес страницы");
         }
         lemmaFinder.saveIndex();
         setSiteStatus(site, Status.INDEXED, "");
         return sendResponse(true, "");//По ТЗ формат ответа не использует поле error; можно ли отправить пустое сообщение?
     }
 
-    public Document connectToPageAndSaveIt(String link, Site site, int method) throws InterruptedException, MalformedURLException, SQLException {
+    public Document connectToPageAndSaveIt(String link, Site site, int method) throws MalformedURLException, InterruptedException {
         Thread.sleep(timeout);
         Connection connection = Jsoup.connect(link).ignoreHttpErrors(true).followRedirects(false);
         Document document;
@@ -223,13 +231,13 @@ public class IndexingServiceImpl implements IndexingService {
             document = connection.userAgent(userAgent).referrer(referrer).get();
             content = document.toString();
             statusCode = connection.response().statusCode();
-        } catch (HttpStatusException e) {
+        } catch (IOException e) {
             log.error("HTTP error fetching URL. Status: {}{}", e.getMessage(), link);
             document = null;
             statusCode = 404; //if server can't answer
-        } catch (Exception e) {
-            log.error("Exception: {}{}", e.getMessage(), link);
-            return null;
+//        } catch (Exception e) {
+//            log.error("Exception: {}{}", e.getMessage(), link);
+//            return null;
         }
 
         if (method == INDEXING_ONE_PAGE) page = updatePage(path, site);

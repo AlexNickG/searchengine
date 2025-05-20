@@ -33,8 +33,8 @@ indexing-settings:
     #  name: PlayBack.Ru
     #- url: https://nopaper.ru/
     #  name: NoPaper.ru
-    - url:  https://nikoartgallery.com/
-      name: Art gallery
+    #- url:  https://nikoartgallery.com/
+    #  name: Art gallery
     - url: https://et-cetera.ru/mobile/
       name: Theatre Et Cetera
     #- url: https://ipfran.ru/
@@ -45,6 +45,23 @@ indexing-settings:
     #  name: Yandex
 
 connection-settings:
-  userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 YaBrowser/24.12.0.0 Safari/537.36
-  referrer: http://localhost
+  #userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 YaBrowser/24.12.0.0 Safari/537.36
+  userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0
+  #referrer: http://localhost
+  referrer: https://google.com
   timeout: 550
+
+exceptions:
+  lemmaExceptions[0]: СОЮЗ
+  lemmaExceptions[1]: МЕЖД
+  lemmaExceptions[2]: ПРЕДЛ
+  lemmaExceptions[3]: ЧАСТ
+
+  fileExtensions[0]: .png
+  fileExtensions[1]: .jpg
+  fileExtensions[2]: .pdf
+  fileExtensions[3]: .mp4
+  fileExtensions[4]: .jpeg
+
+  pathContaining[0]: '#'
+  pathContaining[1]: '?'

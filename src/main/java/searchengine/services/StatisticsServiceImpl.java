@@ -36,7 +36,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         total.setIndexing(true);
 
 
-        for (Site site : sitesList) { //TODO: refactor to forEach
+        for (Site site : sitesList) {
             DetailedStatisticsItem item = new DetailedStatisticsItem();
             item.setName(site.getName());
             item.setUrl(site.getUrl());

@@ -18,6 +18,8 @@ import searchengine.model.Page;
 import searchengine.model.Site;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -31,7 +33,7 @@ public class SearchServiceImpl implements SearchService {
     private final LemmaRepository lemmaRepository;
     private final IndexRepository indexRepository;
     private LuceneMorphology luceneMorph;
-    private LemmaFinder lemmaFinder;//TODO: Почему is never assigned?
+    private final LemmaFinder lemmaFinder;
 
     {
         try {
@@ -61,7 +63,7 @@ public class SearchServiceImpl implements SearchService {
     private void initializeSearch(String query, String site) {
         Set<String> queryLemmasSet = extractQueryLemmas(query);
         List<Site> siteList = (site == null) ? siteRepository.findAll() : Collections.singletonList(siteRepository.findByUrl(site));
-        for (Site dbSite : siteList) {//для каждого сайта
+        for (Site dbSite : siteList) {
             sortedLemmaDbList = filterAndSortLemmas(queryLemmasSet, dbSite);
             if (!sortedLemmaDbList.isEmpty()) {
                 getPagesByLemmas(sortedLemmaDbList);
@@ -78,9 +80,9 @@ public class SearchServiceImpl implements SearchService {
 
     private Set<String> extractQueryLemmas(String query) {
         Set<String> queryLemmasSet = new HashSet<>();
-        String[] words = query.toLowerCase(Locale.ROOT).replaceAll("[^а-я0-9\\s]", " ").trim().split("\\s+");
+        String[] QueryWordsArray = query.toLowerCase(Locale.ROOT).replaceAll("[^а-я0-9\\s]", " ").trim().split("\\s+");
 
-        for (String word : words) {
+        for (String word : QueryWordsArray) {
             if (!word.isEmpty()) {
                 if (lemmaFinder.isWordSignificant(word)) {
                     queryLemmasSet.add(luceneMorph.getNormalForms(word).get(0));
@@ -132,11 +134,16 @@ public class SearchServiceImpl implements SearchService {
     private void prepareSearchResponse() {
         rankedPagesMap.forEach((page, relevance) -> {
             Document doc = Jsoup.parse(page.getContent());
-            List<String> text = Arrays.stream(doc.body().text().toLowerCase(Locale.ROOT).replaceAll("[^а-я0-9\\s]", " ").trim().split("\\s+")).toList();
             SearchData searchData = new SearchData();
+            List<String> text = Arrays.stream(doc.body().text().toLowerCase(Locale.ROOT).replaceAll("[^а-я\\s]", " ").trim().split("\\s+")).toList();
+
             searchData.setSiteName(page.getSite().getName());
             searchData.setUri(page.getPath());
-            searchData.setSite(page.getSite().getUrl());
+            try {
+                searchData.setSite(new URL(page.getSite().getUrl()).getProtocol() + "://" + new URL(page.getSite().getUrl()).getHost());// чтобы корректно открывались ссылки при поиске по сайтам, индексированным не с главной страницы
+            } catch (MalformedURLException e) {
+                throw new RuntimeException(e);
+            }
             searchData.setSnippet(getSnippet(sortedLemmaDbList, text) + " - " + relevance);
             searchData.setTitle(doc.title());
             searchData.setRelevance(relevance);
@@ -155,7 +162,7 @@ public class SearchServiceImpl implements SearchService {
         return searchResponse;
     }
 
-    private String getSnippet(List<Lemma> queryLemmasList, List<String> text) {//TODO: 1) разобраться; 2) заменить на метод getWordNormalForm библиотеки luceneMorph
+    private String getSnippet(List<Lemma> queryLemmasList, List<String> text) {//TODO: 1) разобраться
         Map<List<String>, Integer> snippetList = new HashMap<>();
         for (String word : text) {
             for (Lemma lemmaWord : queryLemmasList) {
@@ -178,11 +185,11 @@ public class SearchServiceImpl implements SearchService {
         List<String> queryWordsList = queryLemmasList.stream().map(Lemma::getLemma).toList();
 
         return "..." + words.stream()
-                .map(word -> queryWordsList.contains(getWordNormalForm(word.toLowerCase(Locale.ROOT))) ? "<b>" + word + "</b>" : word)//TODO: заменить на метод getWordNormalForm библиотеки luceneMorph
+                .map(word -> queryWordsList.contains(getWordNormalForm(word.toLowerCase(Locale.ROOT))) ? "<b>" + word + "</b>" : word)
                 .collect(Collectors.joining(" ")) + "...";
     }
 
-    private String getWordNormalForm(String word) {//TODO: зачем?
+    private String getWordNormalForm(String word) {
         try {
             return luceneMorph.getNormalForms(word).get(0);
         } catch (Exception e) {

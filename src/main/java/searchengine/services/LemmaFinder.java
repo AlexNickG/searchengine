@@ -6,17 +6,19 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Service;
 import searchengine.Repositories.IndexRepository;
 import searchengine.Repositories.LemmaRepository;
 import searchengine.Repositories.PageRepository;
+import searchengine.config.Config;
 import searchengine.exceptions.WordNotFitToDictionaryException;
 import searchengine.model.Index;
 import searchengine.model.Lemma;
 import searchengine.model.Page;
 
 import java.io.IOException;
-import java.sql.SQLException;
+
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -24,12 +26,15 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 @Slf4j
 @Getter
+@ConfigurationProperties(prefix = "exceptions")
 public class LemmaFinder {
     private final LemmaRepository lemmaRepository;
     private final IndexRepository indexRepository;
     private LuceneMorphology luceneMorphRus;
     private final PageRepository pageRepository;
     private final Set<Index> indexSet = ConcurrentHashMap.newKeySet(); //Потоконезависимый Set
+    private final Config config;
+    //private final List<String> lemmaExceptions = config.getLemmaExceptions();
 
     {
         try {
@@ -39,17 +44,17 @@ public class LemmaFinder {
         }
     }
 
-    public void collectLemmas(int pageId) throws SQLException {
+    public void collectLemmas(int pageId) {
         HashMap<String, Integer> lemmasMap = new HashMap<>();
         Page page = pageRepository.findById(pageId).orElseThrow();
-        String[] words = page.getContent().toLowerCase(Locale.ROOT).replaceAll("[^а-я\\s]", " ").trim().split("\\s+");
+        String[] wordsArray = page.getContent().toLowerCase(Locale.ROOT).replaceAll("[^а-я\\s]", " ").trim().split("\\s+");
 
-        for (String word : words) {
+        for (String word : wordsArray) {
             if (word.isEmpty()) {
                 continue;
             }
             if (!luceneMorphRus.checkString(word)) {
-                // если слово не подходит для морфологического анализа - бросаем исключение (если слово состоит из кириллицы и латиницы)
+                // если слово не подходит для морфологического анализа - бросаем исключение (если слово состоит из кириллицы и латиницы или содержит цифры)
                 log.info("bad word {}", word);
                 throw new WordNotFitToDictionaryException(word);
             }
@@ -93,8 +98,17 @@ public class LemmaFinder {
         indexRepository.saveAllAndFlush(indexSet);
     }
 
-    public boolean isWordSignificant(String word) {//TODO: проверить
-        List<String> wordBaseForms = luceneMorphRus.getMorphInfo(word);
-        return wordBaseForms.stream().noneMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ") || getLemma(word).length() < 3);//TODO: 1) add to array and check in cycle
+    public boolean isWordSignificant(String word) {
+        for (String wordForm : luceneMorphRus.getMorphInfo(word)) {
+            if (config.getLemmaExceptions().contains(wordForm)) {
+                return false;
+            }
+        }
+        return true;
+//        List<String> lemmaExceptions = config.getLemmaExceptions();
+//        List<String> fileExceptions = config.getFileExtensions();
+//        List<String> pathContaining = config.getPathContaining();
+//        List<String> wordBaseForms = luceneMorphRus.getMorphInfo(word);
+//        return wordBaseForms.stream().noneMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ") || getLemma(word).length() < 3);//TODO: 1) add to array and check in cycle
     }
 }

@@ -27,7 +27,7 @@ public class Page {
     private int code;
     @Column(columnDefinition = "MEDIUMTEXT NOT NULL")
     private String content;
-    @ManyToMany(cascade = {CascadeType.DETACH, CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REFRESH}) //fetch - ?
+    @ManyToMany(cascade = {CascadeType.DETACH, CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REFRESH})//, fetch = FetchType.LAZY) //fetch - ?
     @JoinTable(name = "index",
             joinColumns = {@JoinColumn(name = "page_id")},
             inverseJoinColumns = {@JoinColumn(name = "lemma_id")})

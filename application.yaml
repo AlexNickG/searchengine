@@ -48,7 +48,7 @@ connection-settings:
   #userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 YaBrowser/24.12.0.0 Safari/537.36
   userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0
   #referrer: http://localhost
-  referrer: https://google.com
+  referrer: https://dombulgakova.ru
   timeout: 550
 
 exceptions:

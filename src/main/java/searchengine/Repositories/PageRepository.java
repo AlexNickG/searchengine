@@ -18,6 +18,10 @@ public interface PageRepository extends JpaRepository<Page, Integer> {
     void deletePages();
 
     List<Page> findByPath(String link);
+    //@Query("select p from Page p where p.lemma = ?1")
+    //List<Page> findByLemma(String lemma);
+   // @Query("select p from Page p where p.id = ?1")
+    //Page findById(int id);
 
     Page findByPathAndSite_id(String link, int site_id);
 

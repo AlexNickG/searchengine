@@ -10,7 +10,7 @@
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
-        <mysql.connector.version>9.0.0</mysql.connector.version>
+        <mysql.connector.version>9.1.0</mysql.connector.version>
         <liquibase.version>4.29.2</liquibase.version>
         <lombok.version>1.18.24</lombok.version>
         <jsoup.version>1.18.3</jsoup.version>

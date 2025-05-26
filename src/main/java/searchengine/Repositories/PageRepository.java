@@ -17,6 +17,9 @@ public interface PageRepository extends JpaRepository<Page, Integer> {
     @Query(value = "delete from search_engine.page", nativeQuery = true)
     void deletePages();
 
+    @Query(value = "select count(*) from Page p where p.site_id = ?1", nativeQuery = true)
+    int getSizeBySite_id(int site_id);
+
     List<Page> findByPath(String link);
     //@Query("select p from Page p where p.lemma = ?1")
     //List<Page> findByLemma(String lemma);

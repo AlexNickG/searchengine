@@ -9,6 +9,7 @@ import searchengine.model.Lemma;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Repository
 public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
@@ -19,8 +20,13 @@ public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
 
     List<Lemma> findByLemma(String lemma); //two sites may have the same lemma
 
-    @Query(value = "select * from Lemma l where l.lemma = ?1 and l.site_id = ?2", nativeQuery = true)//немного (примерно в 1,5 раза) ускоряет выполнение метода
+    //@Query(value = "select * from Lemma l where l.lemma = ?1 and l.site_id = ?2", nativeQuery = true)//немного (примерно в 1,5 раза) ускоряет выполнение метода
     Lemma findByLemmaAndSite_Id(String lemma, int siteId);
+
+    @Query(value = "select * from Lemma l where l.lemma = ?1 and l.site_id = ?2", nativeQuery = true)
+    List<Lemma> findAllByLemmaAndSiteId(Set<String> lemmaSet, int siteId);
+
+    List<Lemma> findAllByLemmaIn(Set<String> lemmaSet);
 
     @Query("select l from Lemma l where l.lemma = ?1 and l.site.id = ?2")
     Optional<Lemma> getLemma(String lemma, Integer id);

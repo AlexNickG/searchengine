@@ -1,6 +1,5 @@
 package searchengine.services;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
@@ -46,12 +45,13 @@ public class SearchServiceImpl implements SearchService {
 
     private List<SearchData> data;
     private SearchResponse searchResponse;
-    private Map<Page, Float> rankedPagesMap;
+    private Map<Integer, Float> rankedPagesIdMap;
+    private Map<Page, Float> rankedPagesIdMap1;
     private List<Lemma> sortedLemmaDbList = new ArrayList<>();
     private final List<Index> indexList;
     private List<Index> localIndexList;
 
-    public SearchServiceImpl(SiteRepository siteRepository, PageRepository pageRepository, LemmaRepository lemmaRepository, IndexRepository indexRepository, LemmaFinder lemmaFinder) {
+    public SearchServiceImpl(SiteRepository siteRepository, PageRepository pageRepository, LemmaRepository lemmaRepository, IndexRepository indexRepository, LemmaFinder lemmaFinder, Map<Page, Float> rankedPagesIdMap1) {
         this.siteRepository = siteRepository;
         this.pageRepository = pageRepository;
         this.lemmaRepository = lemmaRepository;
@@ -66,7 +66,8 @@ public class SearchServiceImpl implements SearchService {
         if (offset == 0) {
             searchResponse = new SearchResponse();
             data = new ArrayList<>();
-            rankedPagesMap = new LinkedHashMap<>();
+            rankedPagesIdMap = new LinkedHashMap<>();
+            rankedPagesIdMap1 = new LinkedHashMap<>();
             localIndexList = new ArrayList<>();
             initializeSearch(query, site);
         }
@@ -103,7 +104,7 @@ public class SearchServiceImpl implements SearchService {
                 getPagesByLemmas(sortedLemmaDbList);
             }
         }
-        if (rankedPagesMap.isEmpty()) {
+        if (rankedPagesIdMap.isEmpty()) {
             searchResponse.setResult(false);
             searchResponse.setError("Nothing found");
         } else {
@@ -131,7 +132,7 @@ public class SearchServiceImpl implements SearchService {
         //String word = queryLemmasSet.stream().findFirst().get();
         //Lemma lemmaList1 = lemmaRepository.findByLemmaAndSite_Id(word, dbSite.getId());
         //log.info("Извлечение одной леммы из БД заняло: {}", System.currentTimeMillis() - start);
-        int quantityPagesBySite = pageRepository.findBySite_id(dbSite.getId()).size();//TODO: вынести выше уровнем в List количества страниц всех сайтов
+        int quantityPagesBySite = pageRepository.getSizeBySite_id(dbSite.getId());//TODO: вынести выше уровнем в List количества страниц всех сайтов
         List<Lemma> lemmaList = queryLemmasSet.stream()
                 .map(lemma -> lemmaRepository.findByLemmaAndSite_Id(lemma, dbSite.getId()))
                 .filter(Objects::nonNull)
@@ -166,17 +167,14 @@ public class SearchServiceImpl implements SearchService {
 //            }
 //        }
 
-        Set<Page> setPagesByLemma = new HashSet<>();
         Set<Integer> pagesIdForSite = new HashSet<>();
         for (Lemma lemma : sortedLemmaDbList) {
             Set<Integer> localPagesId = localIndexList.stream()
                     .filter(index -> index.getLemmaId().equals(lemma.getId()))
                     .map(Index::getPageId)
                     .collect(Collectors.toSet());
-            //List<Integer> pagesIdList = indexRepository.
-            //List<Integer> pagesIdList = localIndexList.stream().filter(index -> index.getPageId(lemma.getId()))
             if (pagesIdForSite.isEmpty()) {
-                pagesIdForSite.addAll(localPagesId);//падает при поиске слова 'театр'; может падать при отсутствии леммы в базе (например слишком короткое слово, для которого нет леммы)
+                pagesIdForSite.addAll(localPagesId);
             } else {
                 pagesIdForSite.retainAll(localPagesId);
                 if (pagesIdForSite.isEmpty()) {
@@ -185,15 +183,20 @@ public class SearchServiceImpl implements SearchService {
             }
         }
         long start2 = System.currentTimeMillis();
-//        Page page;
-//        for (int pageId : pagesIdForSite) {
-               pageRepository.findAllById(pagesIdForSite).forEach(page -> {
+        localIndexList.forEach(index -> {
+            float totalRank = localIndexList.stream()
+                    .filter(index1 -> index1.getPageId().equals(index.getPageId()))
+                    .map(Index::getRank)
+                    .reduce(0f, Float::sum);
+            rankedPagesIdMap.put(index.getPageId(), totalRank);
+        });
+               /*pageRepository.findAllById(pagesIdForSite).forEach(page -> {
                 float totalRank = localIndexList.stream()
                             .filter(index -> index.getPageId().equals(page.getId()))
                             .map(Index::getRank)
                             .reduce(0f, Float::sum);
-                    rankedPagesMap.put(page, totalRank);
-                });
+                    rankedPagesIdMap1.put(page, totalRank);
+                });*/
         /*Map<Integer, List<Index>> indicesByPageId = localIndexList.stream()
                 .collect(Collectors.groupingBy(Index::getPageId));
 
@@ -209,9 +212,9 @@ public class SearchServiceImpl implements SearchService {
 
     private void calculatePageRelevanceAndSort() {
         long start = System.currentTimeMillis();
-        float maxRank = rankedPagesMap.values().stream().max(Float::compare).orElse(0.1f);
-        rankedPagesMap = rankedPagesMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue() / maxRank));
-        rankedPagesMap = rankedPagesMap.entrySet().stream().sorted(Map.Entry.<Page, Float>comparingByValue().reversed()).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (oldValue, newValue) -> oldValue, LinkedHashMap::new));
+        float maxRank = rankedPagesIdMap.values().stream().max(Float::compare).orElse(0.1f);
+        rankedPagesIdMap = rankedPagesIdMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue() / maxRank));
+        rankedPagesIdMap = rankedPagesIdMap.entrySet().stream().sorted(Map.Entry.<Integer, Float>comparingByValue().reversed()).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (oldValue, newValue) -> oldValue, LinkedHashMap::new));
         log.info("Расчет абсолютной релевантности страниц и их сортировка заняла: {}", System.currentTimeMillis() - start);
     }
 
@@ -245,13 +248,13 @@ public class SearchServiceImpl implements SearchService {
 //                .filter(lemmaList.getLemma().getId() -> indexList.forEach(lemma.getLemma()));
     }
 
-    private void prepareSearchResponse(int offset, int limit) {//TODO: готовить ответ в соответствии с offset и limit
+    private void prepareSearchResponse(int offset, int limit) {//TODO: готовить ответ в соответствии с offset и limit. Done!
         long start = System.currentTimeMillis();
-        int end = Math.min(offset + limit, rankedPagesMap.size());
-        List<Map.Entry<Page, Float>> entries = new ArrayList<>(rankedPagesMap.entrySet());
+        int end = Math.min(offset + limit, rankedPagesIdMap.size());
+        List<Map.Entry<Integer, Float>> entries = new ArrayList<>(rankedPagesIdMap.entrySet());
 
         for (int i = offset; i < end; i++) {
-            Page page = entries.get(i).getKey();
+            Page page = pageRepository.findById(entries.get(i).getKey()).orElseThrow();
             Float relevance = entries.get(i).getValue();
 
             Document doc = Jsoup.parse(page.getContent());
@@ -274,7 +277,7 @@ public class SearchServiceImpl implements SearchService {
         }
 
         searchResponse.setResult(true);
-        searchResponse.setCount(rankedPagesMap.size());//data.size());
+        searchResponse.setCount(rankedPagesIdMap.size());//data.size());
         log.info("Подготовка ответа заняла: {}", System.currentTimeMillis() - start);
         //for (int i = offset; i < limit + offset; i++) {
 //            Iterator<Map.Entry<Page, Float>> iterator;
@@ -319,7 +322,7 @@ public class SearchServiceImpl implements SearchService {
 //        if (offset + limit > data.size()) {
 //            limit = data.size() - offset;
 //        }
-        limit = offset + limit > rankedPagesMap.size() ? rankedPagesMap.size() - offset : limit;
+        limit = offset + limit > rankedPagesIdMap.size() ? rankedPagesIdMap.size() - offset : limit;
         prepareSearchResponse(offset, limit);
         searchResponse.setData(data.subList(offset, offset + limit));
         return searchResponse;

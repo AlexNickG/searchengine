@@ -48,8 +48,8 @@ public class SearchServiceImpl implements SearchService {
     private Map<Integer, Float> rankedPagesIdMap;
     private Map<Page, Float> rankedPagesIdMap1;
     private List<Lemma> sortedLemmaDbList = new ArrayList<>();
-    private final List<Index> indexList;
-    private List<Index> localIndexList;
+    //private final List<Index> indexList;
+    private Set<Index> localIndexList;
 
     public SearchServiceImpl(SiteRepository siteRepository, PageRepository pageRepository, LemmaRepository lemmaRepository, IndexRepository indexRepository, LemmaFinder lemmaFinder, Map<Page, Float> rankedPagesIdMap1) {
         this.siteRepository = siteRepository;
@@ -57,7 +57,7 @@ public class SearchServiceImpl implements SearchService {
         this.lemmaRepository = lemmaRepository;
         this.indexRepository = indexRepository;
         this.lemmaFinder = lemmaFinder;
-        this.indexList = indexRepository.findAll();
+        //this.indexList = indexRepository.findAll();
     }
 
     @Override
@@ -68,7 +68,7 @@ public class SearchServiceImpl implements SearchService {
             data = new ArrayList<>();
             rankedPagesIdMap = new LinkedHashMap<>();
             rankedPagesIdMap1 = new LinkedHashMap<>();
-            localIndexList = new ArrayList<>();
+            localIndexList = new HashSet<>();
             initializeSearch(query, site);
         }
         return paginateResults(offset, limit);
@@ -127,7 +127,7 @@ public class SearchServiceImpl implements SearchService {
         return queryLemmasSet;
     }
 
-    private List<Lemma> filterAndSortLemmas(Set<String> queryLemmasSet, Site dbSite) {//TODO: ускорить работу этого метода
+    private List<Lemma> filterAndSortLemmas(Set<String> queryLemmasSet, Site dbSite) {//TODO: 1) ускорить работу этого метода; 2) проверить правильность поиска "самый популярный спектакль"
         long start = System.currentTimeMillis();
         //String word = queryLemmasSet.stream().findFirst().get();
         //Lemma lemmaList1 = lemmaRepository.findByLemmaAndSite_Id(word, dbSite.getId());
@@ -153,9 +153,12 @@ public class SearchServiceImpl implements SearchService {
      */
     private void getPagesByLemmas(List<Lemma> sortedLemmaDbList) {
         long start = System.currentTimeMillis();
-        localIndexList.addAll(indexList.stream()
-                .filter(index -> sortedLemmaDbList.stream().anyMatch(lemma -> lemma.getId().equals(index.getLemmaId())))
-                .toList());
+        Set<Integer> listLemmaIds = sortedLemmaDbList.stream().map(Lemma::getId).collect(Collectors.toSet());
+//        localIndexList.addAll(indexRepository.findAllByLemmaIdIn(listLemmaIds));
+
+        for(int lemmaId: listLemmaIds) {
+            localIndexList.addAll(indexRepository.findByLemmaId(lemmaId));
+        }
 //        Set<Page> listPagesByLemma = null;
 //        for (Lemma lemma : sortedLemmaDbList) {
 //            Set<Page> lemmaPages = new HashSet<>(lemma.getPages());

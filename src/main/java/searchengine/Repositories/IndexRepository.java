@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import searchengine.model.Index;
 
 import java.util.List;
+import java.util.Set;
 
 @Repository
 public interface IndexRepository extends JpaRepository<Index, Integer> {
@@ -23,4 +24,6 @@ public interface IndexRepository extends JpaRepository<Index, Integer> {
 
     Index findByPageIdAndLemmaId(int pageId, int lemmaId);
     List<Index> findByPageId(int pageId);
+    //@Query(value = "select * from Index i where i.lemma_id = ?1", nativeQuery = true)
+    Set<Index> findByLemmaId(int lemmaId);
 }

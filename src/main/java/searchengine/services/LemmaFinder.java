@@ -34,7 +34,7 @@ public class LemmaFinder {
     private final PageRepository pageRepository;
     private final Set<Index> indexSet = ConcurrentHashMap.newKeySet(); //Потоконезависимый Set
     private final Config config;
-    //private final List<String> lemmaExceptions = config.getLemmaExceptions();
+    private final String symbolRegex = "[^а-яА-Я0-9\\s]";
 
     {
         try {
@@ -47,17 +47,19 @@ public class LemmaFinder {
     public void collectLemmas(int pageId) {
         HashMap<String, Integer> lemmasMap = new HashMap<>();
         Page page = pageRepository.findById(pageId).orElseThrow();
-        String[] wordsArray = page.getContent().toLowerCase(Locale.ROOT).replaceAll("[^а-я\\s]", " ").trim().split("\\s+");
+        String[] wordsArray = prepareStringArray(page.getContent());
+
+        //String[] wordsArray = page.getContent().toLowerCase(Locale.ROOT).replaceAll("[^а-яА-Я0-9\\s]", " ").trim().split("\\s+");
 
         for (String word : wordsArray) {
             if (word.isEmpty()) {
                 continue;
             }
-            if (!luceneMorphRus.checkString(word)) {
-                // если слово не подходит для морфологического анализа - бросаем исключение (если слово состоит из кириллицы и латиницы или содержит цифры)
-                log.info("bad word {}", word);
-                throw new WordNotFitToDictionaryException(word);
-            }
+//            if (!luceneMorphRus.checkString(word)) {
+//                // если слово не подходит для морфологического анализа - бросаем исключение (если слово состоит из кириллицы и латиницы или содержит цифры)
+//                log.info("bad word {}", word);
+//                throw new WordNotFitToDictionaryException(word);
+//            }
             if (isWordSignificant(word))
                 lemmasMap.put(getLemma(word), lemmasMap.containsKey(getLemma(word)) ? lemmasMap.get(getLemma(word)) + 1 : 1);
         }
@@ -72,7 +74,7 @@ public class LemmaFinder {
         for (Map.Entry<String, Integer> entry : lemmasMap.entrySet()) {
             Index indexEntity = new Index();
             synchronized (lemmaRepository) {
-                dbLemma = lemmaRepository.findByLemmaAndSite_Id(entry.getKey(), page.getSite().getId());
+                dbLemma = lemmaRepository.findByLemmaAndSiteId(entry.getKey(), page.getSite().getId());
                 if (dbLemma != null) {
                     dbLemma.setFrequency(dbLemma.getFrequency() + 1);
                 } else {
@@ -99,16 +101,20 @@ public class LemmaFinder {
     }
 
     public boolean isWordSignificant(String word) {
+        if (!luceneMorphRus.checkString(word)) {
+            // если слово не подходит для морфологического анализа - бросаем исключение (если слово состоит из кириллицы и латиницы или содержит цифры)
+            log.info("bad word {}", word);
+            throw new WordNotFitToDictionaryException(word);
+        }
         for (String wordForm : luceneMorphRus.getMorphInfo(word)) {
             if (config.getLemmaExceptions().contains(wordForm)) {
                 return false;
             }
         }
         return true;
-//        List<String> lemmaExceptions = config.getLemmaExceptions();
-//        List<String> fileExceptions = config.getFileExtensions();
-//        List<String> pathContaining = config.getPathContaining();
-//        List<String> wordBaseForms = luceneMorphRus.getMorphInfo(word);
-//        return wordBaseForms.stream().noneMatch(w -> w.contains("СОЮЗ") || w.contains("МЕЖД") || w.contains("ПРЕДЛ") || w.contains(" ЧАСТ") || getLemma(word).length() < 3);//TODO: 1) add to array and check in cycle
+    }
+
+    public String[] prepareStringArray(String text) {
+        return text.toLowerCase(Locale.ROOT).replaceAll(symbolRegex, " ").trim().split("\\s+");
     }
 }

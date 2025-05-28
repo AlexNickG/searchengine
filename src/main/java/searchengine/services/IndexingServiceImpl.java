@@ -5,7 +5,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
-import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -25,7 +24,6 @@ import searchengine.model.Status;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
@@ -273,7 +271,7 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     public Page updatePage(String path, Site site) {
-        Page page = pageRepository.findByPathAndSite_id(path, site.getId());
+        Page page = pageRepository.findByPathAndSiteId(path, site.getId());
         if (page == null) {
             page = new Page();
         } else {

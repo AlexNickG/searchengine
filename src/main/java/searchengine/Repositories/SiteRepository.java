@@ -25,7 +25,5 @@ public interface SiteRepository extends JpaRepository<Site, Integer> {
     @Query(value = "SET FOREIGN_KEY_CHECKS = 1", nativeQuery = true)
     void setForeignKeyCheckNotNull();
 
-    //Site findByName(String name);
-
     Site findByUrl(String url);
 }

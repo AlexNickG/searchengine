@@ -34,7 +34,7 @@ public class LemmaFinder {
     private final PageRepository pageRepository;
     private final Set<Index> indexSet = ConcurrentHashMap.newKeySet(); //Потоконезависимый Set
     private final Config config;
-    private final String symbolRegex = "[^а-яА-Я0-9\\s]";
+    private final String symbolRegex = "[^а-яА-Я\\s]";
 
     {
         try {
@@ -104,7 +104,8 @@ public class LemmaFinder {
         if (!luceneMorphRus.checkString(word)) {
             // если слово не подходит для морфологического анализа - бросаем исключение (если слово состоит из кириллицы и латиницы или содержит цифры)
             log.info("bad word {}", word);
-            throw new WordNotFitToDictionaryException(word);
+            return  false;
+            //throw new WordNotFitToDictionaryException(word);
         }
         for (String wordForm : luceneMorphRus.getMorphInfo(word)) {
             if (config.getLemmaExceptions().contains(wordForm)) {

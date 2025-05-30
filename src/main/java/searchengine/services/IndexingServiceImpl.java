@@ -9,6 +9,9 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Service;
+import org.springframework.web.HttpMediaTypeException;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.client.UnknownContentTypeException;
 import searchengine.Repositories.IndexRepository;
 import searchengine.Repositories.LemmaRepository;
 import searchengine.Repositories.PageRepository;
@@ -94,36 +97,40 @@ public class IndexingServiceImpl implements IndexingService {
         private final ForkJoinPool forkJoinPool = new ForkJoinPool();
         private final Site site = new Site();
         private final int siteNumber;
-        private final String siteURL;
+        private final String link;
 
         public StartIndexing(int siteNumber) throws MalformedURLException {
             this.siteNumber = siteNumber;
-            siteURL = sites.getSites().get(siteNumber).getUrl();
+            link = sites.getSites().get(siteNumber).getUrl();
         }
 
         @Override
         public void run() {
             String siteName = sites.getSites().get(siteNumber).getName();
-            site.setUrl(siteURL);
+            site.setUrl(link);
             site.setName(siteName);
             setSiteStatus(site, Status.INDEXING, "");
 
             try {//TODO: разобраться с ошибками
-                forkJoinPool.invoke(new IndexingTask(siteURL, site));
-                if (forkJoinPool.isShutdown() || forkJoinPool.isTerminated()) { //what is the difference between isShutdown and isTerminated?
+                forkJoinPool.invoke(new IndexingTask(link, site));
+                /*if (forkJoinPool.isShutdown() || forkJoinPool.isTerminated()) { //what is the difference between isShutdown and isTerminated?
                     log.info("isShutdown: {}", forkJoinPool.isShutdown());
                     setSiteStatus(site, Status.FAILED, "Индексация остановлена пользователем");
-                } else if (forkJoinPool.isQuiescent()) {
-                    log.info("indexSet size = {}", lemmaFinder.getIndexSet().size());
-                    setSiteStatus(site, Status.INDEXED, "");
-                    forkJoinPool.shutdown();
+//                } else if (forkJoinPool.isQuiescent()) {
+//                    log.info("indexSet size = {}", lemmaFinder.getIndexSet().size());
+//                    setSiteStatus(site, Status.INDEXED, "");
+//                    forkJoinPool.shutdown();
                 } else {
                     log.info("pool is stopped by some reason {}", forkJoinPool.getPoolSize());
+                    log.info("ForkJoinPool IsTerminated?: {}", forkJoinPool.isTerminated());
                     setSiteStatus(site, Status.FAILED, "Unknown error");
-                }
-            } catch (Exception e) {
-                log.error("Exception!: {}", e.getMessage(), e);//при нажатии кнопки "остановить индексацию" происходит CancellationException
+                }*/
+            } catch (CancellationException e) {
+                log.error("CancellationException!: {}", e.getMessage(), e);//при нажатии кнопки "остановить индексацию" происходит CancellationException
                 setSiteStatus(site, Status.FAILED, "Индексация остановлена пользователем");
+            } catch (Exception e) {
+                log.error("Exception!: {}", e.getMessage(), e);
+                setSiteStatus(site, Status.FAILED, "Unknown error");
             }
             if ((siteRepository.findAll()).stream().allMatch(s -> s.getStatus() == Status.INDEXED)) {
                 start2 = System.currentTimeMillis();
@@ -163,7 +170,7 @@ public class IndexingServiceImpl implements IndexingService {
                     .map(e -> e.attr("abs:href"))
                     .filter(e -> e.contains(site.getUrl())
                             && config.getFileExtensions().stream().noneMatch(e::endsWith)
-                            && config.getPathContaining().stream().noneMatch(e::contains))
+                            /*&& config.getPathContaining().stream().noneMatch(e::contains)*/)
 //                            && !e.contains("#") //TODO: add to config
 //                            && !e.endsWith(".jpg")
 //                            && !e.endsWith(".pdf")
@@ -233,9 +240,9 @@ public class IndexingServiceImpl implements IndexingService {
             log.error("HTTP error fetching URL. Status: {}{}", e.getMessage(), link);
             document = null;
             statusCode = 404; //if server can't answer
-//        } catch (Exception e) {
-//            log.error("Exception: {}{}", e.getMessage(), link);
-//            return null;
+        } catch (UnknownContentTypeException e) {
+            log.error("Exception: {}{}", e.getMessage(), link);
+            return null;
         }
 
         if (method == INDEXING_ONE_PAGE) page = updatePage(path, site);

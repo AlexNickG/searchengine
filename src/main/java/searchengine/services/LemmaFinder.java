@@ -12,7 +12,6 @@ import searchengine.Repositories.IndexRepository;
 import searchengine.Repositories.LemmaRepository;
 import searchengine.Repositories.PageRepository;
 import searchengine.config.Config;
-import searchengine.exceptions.WordNotFitToDictionaryException;
 import searchengine.model.Index;
 import searchengine.model.Lemma;
 import searchengine.model.Page;
@@ -49,17 +48,11 @@ public class LemmaFinder {
         Page page = pageRepository.findById(pageId).orElseThrow();
         String[] wordsArray = prepareStringArray(page.getContent());
 
-        //String[] wordsArray = page.getContent().toLowerCase(Locale.ROOT).replaceAll("[^а-яА-Я0-9\\s]", " ").trim().split("\\s+");
-
         for (String word : wordsArray) {
             if (word.isEmpty()) {
                 continue;
             }
-//            if (!luceneMorphRus.checkString(word)) {
-//                // если слово не подходит для морфологического анализа - бросаем исключение (если слово состоит из кириллицы и латиницы или содержит цифры)
-//                log.info("bad word {}", word);
-//                throw new WordNotFitToDictionaryException(word);
-//            }
+
             if (isWordSignificant(word))
                 lemmasMap.put(getLemma(word), lemmasMap.containsKey(getLemma(word)) ? lemmasMap.get(getLemma(word)) + 1 : 1);
         }
@@ -102,10 +95,8 @@ public class LemmaFinder {
 
     public boolean isWordSignificant(String word) {
         if (!luceneMorphRus.checkString(word)) {
-            // если слово не подходит для морфологического анализа - бросаем исключение (если слово состоит из кириллицы и латиницы или содержит цифры)
             log.info("bad word {}", word);
             return  false;
-            //throw new WordNotFitToDictionaryException(word);
         }
         for (String wordForm : luceneMorphRus.getMorphInfo(word)) {
             if (config.getLemmaExceptions().contains(wordForm)) {

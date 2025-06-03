@@ -84,7 +84,6 @@ public class SearchServiceImpl implements SearchService {
     private Set<String> extractQueryLemmas(String query) {
         Set<String> queryLemmasSet = new HashSet<>();
         String[] queryWordsArray = lemmaFinder.prepareStringArray(query);
-        //String[] queryWordsArray = query.toLowerCase(Locale.ROOT).replaceAll("[^а-яА-Я0-9\\s]", " ").trim().split("\\s+");
 
         for (String word : queryWordsArray) {
             if (!word.isEmpty()) {
@@ -102,7 +101,7 @@ public class SearchServiceImpl implements SearchService {
         List<Lemma> lemmaList = queryLemmasSet.stream()
                 .map(lemma -> lemmaRepository.findByLemmaAndSiteId(lemma, dbSite.getId()))
                 .filter(Objects::nonNull)
-                //.filter(lemma -> 100 * lemma.getFrequency() / quantityPagesBySite < 90)
+                .filter(lemma -> 100 * lemma.getFrequency() / quantityPagesBySite < 90)
                 .sorted(Comparator.comparing(Lemma::getFrequency))
                 .collect(Collectors.toList());
         log.info("Фильтрация и сортировка лемм заняла: {}", System.currentTimeMillis() - start);
@@ -174,8 +173,6 @@ public class SearchServiceImpl implements SearchService {
             log.info("Парсинг jsoup занял: {}", System.currentTimeMillis() - start1);
             SearchData searchData = new SearchData();
             List<String> text = Arrays.asList(lemmaFinder.prepareStringArray(doc.body().text()));
-                    //List<String> text = Arrays.stream(doc.body().text().toLowerCase(Locale.ROOT)
-                    //.replaceAll("[^а-яА-Я0-9\\s]", " ").trim().split("\\s+")).toList();
 
             searchData.setSiteName(page.getSite().getName());
             searchData.setUri(page.getPath());

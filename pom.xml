@@ -47,12 +47,22 @@
             <version>${mysql.connector.version}</version>
             <scope>runtime</scope>
         </dependency>
+        <!-- https://mvnrepository.com/artifact/org.postgresql/postgresql -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.6</version>
+        </dependency>
         <dependency>
             <groupId>org.liquibase</groupId>
             <artifactId>liquibase-core</artifactId>
             <version>${liquibase.version}</version>
         </dependency>
-
+        <dependency>
+            <groupId>io.hypersistence</groupId>
+            <artifactId>hypersistence-utils-hibernate-55</artifactId>
+            <version>3.8.3</version>
+        </dependency>
         <!-- Utility dependencies -->
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -63,15 +73,15 @@
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
             <!--<version>1.18.3</version>-->
-        <version>${jsoup.version}</version>
-   </dependency>
-   <dependency>
-       <groupId>org.slf4j</groupId>
-       <artifactId>slf4j-api</artifactId>
-       <version>${slf4j.version}</version>
-   </dependency>
+            <version>${jsoup.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
 
-   <!-- Lucene dependencies -->
+        <!-- Lucene dependencies -->
         <dependency>
             <groupId>org.apache.lucene.morphology</groupId>
             <artifactId>morph</artifactId>

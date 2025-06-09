@@ -66,7 +66,7 @@ public class IndexingServiceImpl implements IndexingService {
         }
         globalLinksSet.clear();
         stop = false;
-        clearDb();
+        //clearDb();
         if (executor == null) executor = Executors.newFixedThreadPool(sites.getSites().size());
         for (int i = 0; i < sites.getSites().size(); i++) {
             try {
@@ -111,11 +111,22 @@ public class IndexingServiceImpl implements IndexingService {
 
             try {
                 forkJoinPool.invoke(new IndexingTask(link, site));
+                if (forkJoinPool.isShutdown() || forkJoinPool.isTerminated()) { //what is the difference between isShutdown and isTerminated?
+                    log.info("isShutdown: {}", forkJoinPool.isShutdown());
+                    setSiteStatus(site, Status.FAILED, "Индексация остановлена пользователем");
+                } else if (forkJoinPool.isQuiescent()) {
+                    log.info("isQuiescent, indexSet size = {}", lemmaFinder.getIndexSet().size());
+                    setSiteStatus(site, Status.INDEXED, "");
+                    forkJoinPool.shutdown();
+                } else {
+                    log.info("pool is stopped by some reason {}", forkJoinPool.getPoolSize());
+                    setSiteStatus(site, Status.FAILED, "Unknown error");
+                }
             } catch (CancellationException e) {
-                log.error("CancellationException!: {}", e.getMessage(), e);//при нажатии кнопки "остановить индексацию" происходит CancellationException
+                log.error("CancellationException!: {}", e.getMessage());//при нажатии кнопки "остановить индексацию" происходит CancellationException
                 setSiteStatus(site, Status.FAILED, "Индексация остановлена пользователем");
             } catch (Exception e) {
-                log.error("Exception!: {}", e.getMessage(), e);
+                log.error("Exception!: {}", e.getMessage());
                 setSiteStatus(site, Status.FAILED, "Unknown error");
             }
             if ((siteRepository.findAll()).stream().allMatch(s -> s.getStatus() == Status.INDEXED)) {
@@ -217,7 +228,7 @@ public class IndexingServiceImpl implements IndexingService {
             content = document.toString();
             statusCode = connection.response().statusCode();
         } catch (IOException e) {
-            log.error("HTTP error fetching URL. Status: {}{}", e.getMessage(), link);
+            log.error("HTTP error fetching URL. Status: {} {}", e.getMessage(), link);
             document = null;
             statusCode = 404; //if server can't answer
         } catch (UnknownContentTypeException e) {
@@ -280,11 +291,11 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     public void clearDb() {
-        siteRepository.setForeignKeyCheckNull();
+        //siteRepository.setForeignKeyCheckNull();
         indexRepository.deleteIndex();
         lemmaRepository.deleteLemmas();
         pageRepository.deletePages();
         siteRepository.deleteAllSites();
-        siteRepository.setForeignKeyCheckNotNull();
+        //siteRepository.setForeignKeyCheckNotNull();
     }
 }

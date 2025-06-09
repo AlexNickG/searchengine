@@ -15,7 +15,7 @@ public interface IndexRepository extends JpaRepository<Index, Integer> {
 
     @Transactional
     @Modifying
-    @Query(value = "delete from search_engine.index", nativeQuery = true)
+    @Query(value = "delete from Index")
     void deleteIndex();
 
     Index findByPageIdAndLemmaId(int pageId, int lemmaId);

@@ -12,18 +12,14 @@ public interface SiteRepository extends JpaRepository<Site, Integer> {
 
     @Transactional
     @Modifying
-    @Query(value = "delete from search_engine.site", nativeQuery = true)
+    @Query(value = "delete from Site")
     void deleteAllSites();
 
-    @Transactional
-    @Modifying
-    @Query(value = "SET FOREIGN_KEY_CHECKS = 0", nativeQuery = true)
-    void setForeignKeyCheckNull();
+    //@Query(value = "SET FOREIGN_KEY_CHECKS = 0")
+    //void setForeignKeyCheckNull();
 
-    @Transactional
-    @Modifying
-    @Query(value = "SET FOREIGN_KEY_CHECKS = 1", nativeQuery = true)
-    void setForeignKeyCheckNotNull();
+    //@Query(value = "SET FOREIGN_KEY_CHECKS = 1")
+    //void setForeignKeyCheckNotNull();
 
     Site findByUrl(String url);
 }

@@ -48,7 +48,9 @@ public class SearchServiceImpl implements SearchService {
     private SearchResponse searchResponse;
     private Map<Integer, Float> rankedPagesIdMap;
     private List<Lemma> sortedLemmaDbList;
+    private List<Lemma> globalLemmaList;
     private Set<Index> localIndexList;
+    private Set<String> queryLemmasSet;
 
     @Override
     public SearchResponse getSearchResult(String query, int offset, int limit, String site) {
@@ -58,6 +60,7 @@ public class SearchServiceImpl implements SearchService {
             data = new ArrayList<>();
             rankedPagesIdMap = new LinkedHashMap<>();
             sortedLemmaDbList = new ArrayList<>();
+            globalLemmaList = new ArrayList<>();
             localIndexList = new HashSet<>();
             initializeSearch(query, site);
         }
@@ -65,10 +68,11 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private void initializeSearch(String query, String site) {
-        Set<String> queryLemmasSet = extractQueryLemmas(query);
+        extractQueryLemmas(query);
         List<Site> siteList = (site == null || site.isEmpty()) ? siteRepository.findAll() : Collections.singletonList(siteRepository.findByUrl(site));
         for (Site dbSite : siteList) {
             sortedLemmaDbList = filterAndSortLemmas(queryLemmasSet, dbSite);
+            globalLemmaList.addAll(sortedLemmaDbList);
             if (!sortedLemmaDbList.isEmpty()) {
                 getPagesByLemmas(sortedLemmaDbList);
             }
@@ -81,8 +85,8 @@ public class SearchServiceImpl implements SearchService {
         }
     }
 
-    private Set<String> extractQueryLemmas(String query) {
-        Set<String> queryLemmasSet = new HashSet<>();
+    private void extractQueryLemmas(String query) {
+        queryLemmasSet = new HashSet<>();
         String[] queryWordsArray = lemmaFinder.prepareStringArray(query);
 
         for (String word : queryWordsArray) {
@@ -92,12 +96,11 @@ public class SearchServiceImpl implements SearchService {
                 }
             }
         }
-        return queryLemmasSet;
     }
 
     private List<Lemma> filterAndSortLemmas(Set<String> queryLemmasSet, Site dbSite) {
         long start = System.currentTimeMillis();
-        int quantityPagesBySite = pageRepository.getSizeBySite_id(dbSite.getId());
+        int quantityPagesBySite = pageRepository.getSizeBySiteId(dbSite.getId());
         List<Lemma> lemmaList = queryLemmasSet.stream()
                 .map(lemma -> lemmaRepository.findByLemmaAndSiteId(lemma, dbSite.getId()))
                 .filter(Objects::nonNull)
@@ -203,7 +206,7 @@ public class SearchServiceImpl implements SearchService {
     private String getSnippet(List<String> text) {
         Map<List<String>, Integer> snippetMap = new HashMap<>();
         for (String word : text) {
-            for (Lemma lemma : sortedLemmaDbList) {
+            for (Lemma lemma : globalLemmaList) {
                 if (lemma.getLemma().equals(getWordNormalForm(word))) {
                     int index = text.indexOf(word);
                     snippetMap.put(text.subList(Math.max(0, index - 5), Math.min(index + 5, text.size())), 0);

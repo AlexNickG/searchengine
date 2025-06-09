@@ -72,12 +72,12 @@ public class ApiController {
 
     @DeleteMapping("/deleteAll")
     public void deleteAll() throws InterruptedException {
-        siteRepository.setForeignKeyCheckNull();
+        //siteRepository.setForeignKeyCheckNull();
         indexRepository.deleteIndex();
         lemmaRepository.deleteLemmas();
         pageRepository.deletePages();
         siteRepository.deleteAllSites();
-        siteRepository.setForeignKeyCheckNotNull();
+        //siteRepository.setForeignKeyCheckNotNull();
         log.info("DB cleared");
     }
 

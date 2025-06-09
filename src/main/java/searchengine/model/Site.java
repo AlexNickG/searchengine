@@ -1,9 +1,12 @@
 package searchengine.model;
 
 //import javax.persistence.*;
+import io.hypersistence.utils.hibernate.type.basic.PostgreSQLEnumType;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.Type;
+import org.hibernate.annotations.TypeDef;
 
 import javax.persistence.*;
 import java.time.LocalDateTime;
@@ -15,6 +18,7 @@ import java.util.List;
 @Getter
 @Setter
 @NoArgsConstructor
+@TypeDef(name = "pgsql_enum", typeClass = PostgreSQLEnumType.class)
 public class Site {
 
     @Id
@@ -23,6 +27,7 @@ public class Site {
     //@Column(columnDefinition = "enum NOT NULL") // с этой записью таблица не создается
     @Enumerated(EnumType.STRING)
     @Column(columnDefinition = "ENUM('INDEXING', 'INDEXED', 'FAILED') NOT NULL")
+    @Type(type = "pgsql_enum")
     private Status status;
     @Column(name = "status_time", columnDefinition = "DATETIME NOT NULL")
     private LocalDateTime statusTime;

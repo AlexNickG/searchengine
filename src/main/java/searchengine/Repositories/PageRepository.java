@@ -14,11 +14,11 @@ public interface PageRepository extends JpaRepository<Page, Integer> {
 
     @Transactional
     @Modifying
-    @Query(value = "delete from search_engine.page", nativeQuery = true)
+    @Query(value = "delete from Page")
     void deletePages();
 
-    @Query(value = "select count(*) from Page p where p.site_id = ?1", nativeQuery = true)
-    int getSizeBySite_id(int site_id);
+    @Query(value = "select count(*) from Page p where p.site = ?1")
+    int getSizeBySiteId(int site_id);
 
     List<Page> findByPath(String link);
 

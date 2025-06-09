@@ -12,9 +12,10 @@ import java.util.Set;
 
 @Repository
 public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
+
     @Transactional
     @Modifying
-    @Query(value = "delete from search_engine.lemma", nativeQuery = true)
+    @Query(value = "delete from Lemma")
     void deleteLemmas();
 
     List<Lemma> findByLemma(String lemma); //two sites may have the same lemma
@@ -22,13 +23,11 @@ public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
 
     Lemma findByLemmaAndSiteId(String lemma, int siteId);
 
-    @Query(value = "select * from Lemma l where l.lemma = ?1 and l.site_id = ?2", nativeQuery = true)
+    @Query(value = "select l from Lemma l where l.lemma = ?1 and l.site = ?2")
     List<Lemma> findAllByLemmaAndSiteId(Set<String> lemmaSet, int siteId);
 
     List<Lemma> findBySiteId(int site_id);
 
     @Query("delete from Lemma l where l.id = ?1")
-    @Transactional
-    @Modifying
     void deleteLemmaById(int id);
 }

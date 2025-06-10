@@ -52,9 +52,9 @@ public class IndexingServiceImpl implements IndexingService {
     public static volatile boolean stop;
     long start;
     long start2;
-    private String userAgent;
-    private String referrer;
-    private int timeout;
+    private final String userAgent;
+    private final String referrer;
+    private final int timeout;
 
     @Override
     public ResponseMessage startIndexing() {
@@ -290,12 +290,12 @@ public class IndexingServiceImpl implements IndexingService {
         return page;
     }
 
+    @Override
     public void clearDb() {
-        //siteRepository.setForeignKeyCheckNull();
         indexRepository.deleteIndex();
         lemmaRepository.deleteLemmas();
         pageRepository.deletePages();
         siteRepository.deleteAllSites();
-        //siteRepository.setForeignKeyCheckNotNull();
+        log.info("DB cleared");
     }
 }

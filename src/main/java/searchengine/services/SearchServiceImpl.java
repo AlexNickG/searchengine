@@ -6,6 +6,7 @@ import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Service;
 import searchengine.Repositories.IndexRepository;
 import searchengine.Repositories.LemmaRepository;
@@ -27,6 +28,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@ConfigurationProperties(prefix = "search-settings")
 public class SearchServiceImpl implements SearchService {
 
     private final SiteRepository siteRepository;
@@ -48,9 +50,10 @@ public class SearchServiceImpl implements SearchService {
     private SearchResponse searchResponse;
     private Map<Integer, Float> rankedPagesIdMap;
     private List<Lemma> sortedLemmaDbList;
-    private List<Lemma> globalLemmaList;
     private Set<Index> localIndexList;
     private Set<String> queryLemmasSet;
+    private final int searchFilter;
+
 
     @Override
     public SearchResponse getSearchResult(String query, int offset, int limit, String site) {
@@ -60,8 +63,8 @@ public class SearchServiceImpl implements SearchService {
             data = new ArrayList<>();
             rankedPagesIdMap = new LinkedHashMap<>();
             sortedLemmaDbList = new ArrayList<>();
-            globalLemmaList = new ArrayList<>();
             localIndexList = new HashSet<>();
+            queryLemmasSet = new HashSet<>();
             initializeSearch(query, site);
         }
         return paginateResults(offset, limit);
@@ -72,7 +75,6 @@ public class SearchServiceImpl implements SearchService {
         List<Site> siteList = (site == null || site.isEmpty()) ? siteRepository.findAll() : Collections.singletonList(siteRepository.findByUrl(site));
         for (Site dbSite : siteList) {
             sortedLemmaDbList = filterAndSortLemmas(queryLemmasSet, dbSite);
-            globalLemmaList.addAll(sortedLemmaDbList);
             if (!sortedLemmaDbList.isEmpty()) {
                 getPagesByLemmas(sortedLemmaDbList);
             }
@@ -86,7 +88,6 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private void extractQueryLemmas(String query) {
-        queryLemmasSet = new HashSet<>();
         String[] queryWordsArray = lemmaFinder.prepareStringArray(query);
 
         for (String word : queryWordsArray) {
@@ -104,7 +105,7 @@ public class SearchServiceImpl implements SearchService {
         List<Lemma> lemmaList = queryLemmasSet.stream()
                 .map(lemma -> lemmaRepository.findByLemmaAndSiteId(lemma, dbSite.getId()))
                 .filter(Objects::nonNull)
-                .filter(lemma -> 100 * lemma.getFrequency() / quantityPagesBySite < 90)
+                .filter(lemma -> 100 * lemma.getFrequency() / quantityPagesBySite < searchFilter)
                 .sorted(Comparator.comparing(Lemma::getFrequency))
                 .collect(Collectors.toList());
         log.info("Фильтрация и сортировка лемм заняла: {}", System.currentTimeMillis() - start);
@@ -206,8 +207,8 @@ public class SearchServiceImpl implements SearchService {
     private String getSnippet(List<String> text) {
         Map<List<String>, Integer> snippetMap = new HashMap<>();
         for (String word : text) {
-            for (Lemma lemma : globalLemmaList) {
-                if (lemma.getLemma().equals(getWordNormalForm(word))) {
+            for (String queryWord : queryLemmasSet) {
+                if (getWordNormalForm(queryWord).equals(getWordNormalForm(word))) {
                     int index = text.indexOf(word);
                     snippetMap.put(text.subList(Math.max(0, index - 5), Math.min(index + 5, text.size())), 0);
                 }

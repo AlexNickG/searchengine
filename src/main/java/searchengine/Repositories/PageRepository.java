@@ -17,8 +17,8 @@ public interface PageRepository extends JpaRepository<Page, Integer> {
     @Query(value = "delete from Page")
     void deletePages();
 
-    @Query(value = "select count(*) from Page p where p.site = ?1")
-    int getSizeBySiteId(int site_id);
+    @Query(value = "select count(*) from Page p where p.site.id = ?1")
+    int getSizeBySiteId(int siteId);
 
     List<Page> findByPath(String link);
 

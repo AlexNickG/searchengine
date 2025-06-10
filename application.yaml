@@ -24,9 +24,9 @@ spring:
       ddl-auto: none
     show-sql: false
   liquibase:
-     change-log: classpath:db/changelog/db.changelog-master.xml
-     enabled: true
-     drop-first: false
+    change-log: classpath:db/changelog/db.changelog-master.xml
+    enabled: true
+    drop-first: false
 
   output:
     ansi:
@@ -44,8 +44,8 @@ indexing-settings:
       name: Theatre Et Cetera
     #- url: https://ipfran.ru/
     #  name: IPF RAN
-   # - url: https://dombulgakova.ru/
-   #   name: Dom Bulgakova
+    # - url: https://dombulgakova.ru/
+    #   name: Dom Bulgakova
     #- url: https://ya.ru/
     #  name: Yandex
 
@@ -69,6 +69,23 @@ exceptions:
   fileExtensions[4]: .jpeg
   fileExtensions[5]: .jpg
   fileExtensions[6]: .JPG
+  fileExtensions[7]: .mov
+  fileExtensions[8]: .webm
+  fileExtensions[9]: .wav
+  fileExtensions[10]: .ogg
+  fileExtensions[11]: .mp4
+  fileExtensions[12]: .zip
+  fileExtensions[13]: .rar
+  fileExtensions[14]: .mp3
+  fileExtensions[15]: .avi
+  fileExtensions[16]: .mpg
+  fileExtensions[17]: .mpeg
+  fileExtensions[18]: .mkv
+  fileExtensions[19]: .gif
+
 
   pathContaining[0]: '#'
   pathContaining[1]: '?'
+
+search-settings:
+  searchFilter: 90

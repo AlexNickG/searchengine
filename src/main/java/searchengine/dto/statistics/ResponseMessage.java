@@ -7,7 +7,7 @@ import java.util.HashMap;
 public class ResponseMessage {
     private boolean result;
     private String error;
-    public void getResponse() {
+    //public void getResponse() {
 
-    }
+    //}
 }

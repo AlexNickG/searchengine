@@ -23,8 +23,8 @@ public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
 
     Lemma findByLemmaAndSiteId(String lemma, int siteId);
 
-    @Query(value = "select l from Lemma l where l.lemma = ?1 and l.site = ?2")
-    List<Lemma> findAllByLemmaAndSiteId(Set<String> lemmaSet, int siteId);
+    //@Query(value = "select l from Lemma l where l.lemma = ?1 and l.site = ?2")
+    //List<Lemma> findAllByLemmaAndSiteId(Set<String> lemmaSet, int siteId);
 
     List<Lemma> findBySiteId(int site_id);
 

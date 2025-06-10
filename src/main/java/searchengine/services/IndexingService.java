@@ -6,4 +6,5 @@ public interface IndexingService {
     ResponseMessage startIndexing();
     ResponseMessage stopIndexing();
     ResponseMessage addPageForIndexing(String url);
+    void clearDb();
 }

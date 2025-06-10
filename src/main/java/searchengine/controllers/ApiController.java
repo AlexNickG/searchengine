@@ -5,10 +5,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import searchengine.Repositories.IndexRepository;
-import searchengine.Repositories.LemmaRepository;
-import searchengine.Repositories.PageRepository;
-import searchengine.Repositories.SiteRepository;
 import searchengine.dto.search.SearchResponse;
 import searchengine.dto.statistics.ResponseMessage;
 import searchengine.dto.statistics.StatisticsResponse;
@@ -24,10 +20,6 @@ public class ApiController {
     private final StatisticsService statisticsService;
     private final IndexingService indexingService;
     private final SearchService searchService;
-    private final SiteRepository siteRepository;
-    private final IndexRepository indexRepository;
-    private final LemmaRepository lemmaRepository;
-    private final PageRepository pageRepository;
 
     @GetMapping("/statistics")
     public ResponseEntity<StatisticsResponse> statistics() {
@@ -63,7 +55,7 @@ public class ApiController {
     public ResponseEntity<ResponseMessage> indexPage(@RequestParam String url) {
         ResponseMessage responseMessage = indexingService.addPageForIndexing(url);
         if (responseMessage.isResult()) {
-            return new ResponseEntity<>(responseMessage, HttpStatus.OK); //CREATED
+            return new ResponseEntity<>(responseMessage, HttpStatus.OK); //CREATED - 201
         } else {
             return new ResponseEntity<>(responseMessage, HttpStatus.NOT_FOUND);
         }
@@ -72,25 +64,20 @@ public class ApiController {
 
     @DeleteMapping("/deleteAll")
     public void deleteAll() throws InterruptedException {
-        //siteRepository.setForeignKeyCheckNull();
-        indexRepository.deleteIndex();
-        lemmaRepository.deleteLemmas();
-        pageRepository.deletePages();
-        siteRepository.deleteAllSites();
-        //siteRepository.setForeignKeyCheckNotNull();
-        log.info("DB cleared");
+        indexingService.clearDb();
     }
 
     @GetMapping("/search")
-    public ResponseEntity<SearchResponse> search(@RequestParam String query, int offset, Integer limit, String site) {
+    public SearchResponse search(@RequestParam String query, int offset, Integer limit, String site) {
         //long start = System.currentTimeMillis();
         if (query.isEmpty()) {
             SearchResponse searchResponse = new SearchResponse();
             searchResponse.setResult(false);
             searchResponse.setError("Задан пустой поисковый запрос");
-            return new ResponseEntity<>(searchResponse, HttpStatus.BAD_REQUEST);
+            return searchResponse;
+            //return new ResponseEntity<>(searchResponse, HttpStatus.BAD_REQUEST);
         }
         //log.info("Время выполнения поиска: {} мс", System.currentTimeMillis() - start);
-        return new ResponseEntity<>(searchService.getSearchResult(query, offset, limit, site), HttpStatus.OK);
+        return searchService.getSearchResult(query, offset, limit, site);
     }
 }

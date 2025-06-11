@@ -6,6 +6,7 @@ import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Service;
 import searchengine.Repositories.IndexRepository;
@@ -14,6 +15,7 @@ import searchengine.Repositories.PageRepository;
 import searchengine.Repositories.SiteRepository;
 import searchengine.dto.search.SearchData;
 import searchengine.dto.search.SearchResponse;
+import searchengine.exceptions.EmptyQueryException;
 import searchengine.model.Index;
 import searchengine.model.Lemma;
 import searchengine.model.Page;
@@ -52,11 +54,19 @@ public class SearchServiceImpl implements SearchService {
     private List<Lemma> sortedLemmaDbList;
     private Set<Index> localIndexList;
     private Set<String> queryLemmasSet;
-    private final int searchFilter;
+    @Value("${search-settings.searchFilter}")
+    private int searchFilter;
 
 
     @Override
     public SearchResponse getSearchResult(String query, int offset, int limit, String site) {
+        if (query.isEmpty()) {
+            throw new EmptyQueryException("Задан пустой поисковый запрос");
+//            SearchResponse searchResponse = new SearchResponse();
+//            searchResponse.setResult(false);
+//            searchResponse.setError("Задан пустой поисковый запрос");
+//            return searchResponse;
+        }
 
         if (offset == 0) {
             searchResponse = new SearchResponse();
@@ -74,7 +84,7 @@ public class SearchServiceImpl implements SearchService {
         extractQueryLemmas(query);
         List<Site> siteList = (site == null || site.isEmpty()) ? siteRepository.findAll() : Collections.singletonList(siteRepository.findByUrl(site));
         for (Site dbSite : siteList) {
-            sortedLemmaDbList = filterAndSortLemmas(queryLemmasSet, dbSite);
+            sortedLemmaDbList = filterAndSortLemmas(queryLemmasSet, dbSite);//TODO: сделать единый список лемм для всех сайтов, сортировать его и по сортированному списку находить страницы
             if (!sortedLemmaDbList.isEmpty()) {
                 getPagesByLemmas(sortedLemmaDbList);
             }
@@ -105,7 +115,7 @@ public class SearchServiceImpl implements SearchService {
         List<Lemma> lemmaList = queryLemmasSet.stream()
                 .map(lemma -> lemmaRepository.findByLemmaAndSiteId(lemma, dbSite.getId()))
                 .filter(Objects::nonNull)
-                .filter(lemma -> 100 * lemma.getFrequency() / quantityPagesBySite < searchFilter)
+                .filter(lemma -> 100 * lemma.getFrequency() / quantityPagesBySite <= searchFilter)
                 .sorted(Comparator.comparing(Lemma::getFrequency))
                 .collect(Collectors.toList());
         log.info("Фильтрация и сортировка лемм заняла: {}", System.currentTimeMillis() - start);

@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.UnknownContentTypeException;
@@ -17,6 +18,8 @@ import searchengine.Repositories.SiteRepository;
 import searchengine.config.Config;
 import searchengine.config.SitesList;
 import searchengine.dto.statistics.ResponseMessage;
+import searchengine.exceptions.EmptyQueryException;
+import searchengine.exceptions.ResourceDoesNotMatchException;
 import searchengine.model.Index;
 import searchengine.model.Page;
 import searchengine.model.Site;
@@ -52,9 +55,11 @@ public class IndexingServiceImpl implements IndexingService {
     public static volatile boolean stop;
     long start;
     long start2;
-    private final String userAgent;
-    private final String referrer;
-    private final int timeout;
+    private String userAgent;
+    private String referrer;
+    private int timeout;
+    @Value("${indexing-settings.clearDb}")
+    private boolean clearDb;
 
     @Override
     public ResponseMessage startIndexing() {
@@ -62,11 +67,11 @@ public class IndexingServiceImpl implements IndexingService {
         List<Site> indexingSites = siteRepository.findAll();
 
         if (indexingSites.stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
-            return sendResponse(false, "Индексация уже запущена");
+            throw new EmptyQueryException("Индексация уже запущена");
         }
         globalLinksSet.clear();
         stop = false;
-        //clearDb();
+        if (clearDb) clearDb();
         if (executor == null) executor = Executors.newFixedThreadPool(sites.getSites().size());
         for (int i = 0; i < sites.getSites().size(); i++) {
             try {
@@ -87,7 +92,7 @@ public class IndexingServiceImpl implements IndexingService {
             stop = true;
             return sendResponse(true, "");
         } else {
-            return sendResponse(false, "Индексация не запущена");
+            throw new EmptyQueryException("Индексация не запущена");
         }
     }
 
@@ -192,7 +197,7 @@ public class IndexingServiceImpl implements IndexingService {
         String finalHost = host;
         Optional<searchengine.config.Site> optionalSite = sites.getSites().stream().filter(s -> s.getUrl().contains(finalHost)).findFirst();
         if (optionalSite.isEmpty() || host.isEmpty()) {
-            return sendResponse(false, "Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
+            throw new ResourceDoesNotMatchException("Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
         }
         Site site = siteRepository.findByUrl(optionalSite.get().getUrl());
         if (site == null) {
@@ -200,14 +205,16 @@ public class IndexingServiceImpl implements IndexingService {
         }
         setSiteStatus(site, Status.INDEXING, "");
         try {
-            if (connectToPageAndSaveIt(link, site, INDEXING_ONE_PAGE) == null)
-                return sendResponse(false, "Данная страница недоступна");
+            if (connectToPageAndSaveIt(link, site, INDEXING_ONE_PAGE) == null) {
+                log.error("Данная страница недоступна: {}", link);
+                throw new ResourceDoesNotMatchException("Данная страница недоступна");
+            }
         } catch (InterruptedException e) {
-            log.error("Индексация прервана : {}", e.getMessage());
+            log.error("Индексация прервана: {}", e.getMessage());
             return sendResponse(false, "Индексация прервана");
         } catch (MalformedURLException e) {
-            log.info("Неправильный адрес страницы: {}{}", e.getMessage(), link);
-            return sendResponse(false, "Неправильный адрес страницы");
+            log.info("Неправильный адрес страницы: {}", link);
+            throw new EmptyQueryException("Неправильный адрес страницы");
         }
         lemmaFinder.saveIndex();
         setSiteStatus(site, Status.INDEXED, "");
@@ -228,11 +235,11 @@ public class IndexingServiceImpl implements IndexingService {
             content = document.toString();
             statusCode = connection.response().statusCode();
         } catch (IOException e) {
-            log.error("HTTP error fetching URL. Status: {} {}", e.getMessage(), link);
+            log.error("IOException: {} {}", e.getMessage(), link);
             document = null;
             statusCode = 404; //if server can't answer
         } catch (UnknownContentTypeException e) {
-            log.error("Exception: {}{}", e.getMessage(), link);
+            log.error("UnknownContentTypeException: {}{}", e.getMessage(), link);
             return null;
         }
 
@@ -275,7 +282,11 @@ public class IndexingServiceImpl implements IndexingService {
         } else {
             List<Index> indexList = indexRepository.findByPageId(page.getId());
             if (indexList != null) {
-                indexList.forEach(i -> lemmaRepository.deleteLemmaById(i.getLemmaId()));
+                indexList.forEach(i -> lemmaRepository.decreaseLemmaFreqById(i.getLemmaId()));//TODO: зачем удалять леммы? (они могут относиться к другим страницам)
+                /**
+                 * В случае, если переданная страница уже была проиндексирована,
+                 * перед её индексацией необходимо удалить всю информацию о ней из таблиц page, lemma и index.
+                 */
                 indexRepository.deleteAllInBatch(indexList);
             }
         }

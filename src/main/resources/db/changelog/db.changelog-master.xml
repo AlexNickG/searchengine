@@ -4,9 +4,9 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
         http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
 
-    <changeSet id="1" author="Alex">
+    <!--changeSet id="1" author="Alex">
         <sql>CREATE TYPE state AS ENUM ('INDEXING', 'INDEXED', 'FAILED')</sql>
-    </changeSet>
+    </changeSet-->
 
     <include file="db/changelog/liquibase-outputChangeLog_init.xml"/>
 </databaseChangeLog>

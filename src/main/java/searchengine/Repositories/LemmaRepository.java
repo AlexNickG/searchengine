@@ -28,6 +28,11 @@ public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
 
     List<Lemma> findBySiteId(int site_id);
 
+    @Transactional
+    @Modifying
     @Query("delete from Lemma l where l.id = ?1")
     void deleteLemmaById(int id);
+
+    @Query("update Lemma l set l.frequency = l.frequency - 1 where l.id = ?1")
+    void decreaseLemmaFreqById(int id);
 }

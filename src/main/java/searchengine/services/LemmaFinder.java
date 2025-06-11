@@ -54,7 +54,7 @@ public class LemmaFinder {
             }
 
             if (isWordSignificant(word))
-                lemmasMap.put(getLemma(word), lemmasMap.containsKey(getLemma(word)) ? lemmasMap.get(getLemma(word)) + 1 : 1);
+                lemmasMap.put(getLemma(word), lemmasMap.getOrDefault(getLemma(word), 1));
         }
         saveLemmas(lemmasMap, page);
     }

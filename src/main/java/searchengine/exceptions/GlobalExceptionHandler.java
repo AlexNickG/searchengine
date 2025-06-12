@@ -4,7 +4,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import searchengine.dto.statistics.ResponseMessage;
 
 @ControllerAdvice
@@ -19,11 +18,18 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler
-    //@ResponseStatus(HttpStatus.BAD_REQUEST)
-    ResponseEntity<ResponseMessage> catchEmptyQueryException(EmptyQueryException e) {
+    ResponseEntity<ResponseMessage> catchBadRequestException(BadRequestException e) {
         ResponseMessage responseMessage = new ResponseMessage();
         responseMessage.setResult(false);
         responseMessage.setError(e.getMessage());
         return new ResponseEntity<>(responseMessage, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler
+    ResponseEntity<ResponseMessage> catchResourceForbiddenException(ResourceForbiddenException e) {
+        ResponseMessage responseMessage = new ResponseMessage();
+        responseMessage.setResult(false);
+        responseMessage.setError(e.getMessage());
+        return new ResponseEntity<>(responseMessage, HttpStatus.FORBIDDEN);
     }
 }

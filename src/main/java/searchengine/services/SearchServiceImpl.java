@@ -7,7 +7,6 @@ import org.apache.lucene.morphology.russian.RussianLuceneMorphology;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Service;
 import searchengine.Repositories.IndexRepository;
 import searchengine.Repositories.LemmaRepository;
@@ -15,7 +14,7 @@ import searchengine.Repositories.PageRepository;
 import searchengine.Repositories.SiteRepository;
 import searchengine.dto.search.SearchData;
 import searchengine.dto.search.SearchResponse;
-import searchengine.exceptions.EmptyQueryException;
+import searchengine.exceptions.BadRequestException;
 import searchengine.model.Index;
 import searchengine.model.Lemma;
 import searchengine.model.Page;
@@ -30,7 +29,6 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@ConfigurationProperties(prefix = "search-settings")
 public class SearchServiceImpl implements SearchService {
 
     private final SiteRepository siteRepository;
@@ -61,11 +59,7 @@ public class SearchServiceImpl implements SearchService {
     @Override
     public SearchResponse getSearchResult(String query, int offset, int limit, String site) {
         if (query.isEmpty()) {
-            throw new EmptyQueryException("Задан пустой поисковый запрос");
-//            SearchResponse searchResponse = new SearchResponse();
-//            searchResponse.setResult(false);
-//            searchResponse.setError("Задан пустой поисковый запрос");
-//            return searchResponse;
+            throw new BadRequestException("Задан пустой поисковый запрос");
         }
 
         if (offset == 0) {
@@ -84,7 +78,7 @@ public class SearchServiceImpl implements SearchService {
         extractQueryLemmas(query);
         List<Site> siteList = (site == null || site.isEmpty()) ? siteRepository.findAll() : Collections.singletonList(siteRepository.findByUrl(site));
         for (Site dbSite : siteList) {
-            sortedLemmaDbList = filterAndSortLemmas(queryLemmasSet, dbSite);//TODO: сделать единый список лемм для всех сайтов, сортировать его и по сортированному списку находить страницы
+            sortedLemmaDbList = filterAndSortLemmas(queryLemmasSet, dbSite);
             if (!sortedLemmaDbList.isEmpty()) {
                 getPagesByLemmas(sortedLemmaDbList);
             }
@@ -111,25 +105,22 @@ public class SearchServiceImpl implements SearchService {
 
     private List<Lemma> filterAndSortLemmas(Set<String> queryLemmasSet, Site dbSite) {
         long start = System.currentTimeMillis();
+        List<Lemma> lemmaList = new ArrayList<>();
         int quantityPagesBySite = pageRepository.getSizeBySiteId(dbSite.getId());
-        List<Lemma> lemmaList = queryLemmasSet.stream()
-                .map(lemma -> lemmaRepository.findByLemmaAndSiteId(lemma, dbSite.getId()))
-                .filter(Objects::nonNull)
-                .filter(lemma -> 100 * lemma.getFrequency() / quantityPagesBySite <= searchFilter)
-                .sorted(Comparator.comparing(Lemma::getFrequency))
-                .collect(Collectors.toList());
+        for (String queryWord : queryLemmasSet) {
+            Lemma lemma = lemmaRepository.findByLemmaAndSiteId(queryWord, dbSite.getId());
+            if (lemma == null) {
+                return new ArrayList<>();
+            } else if (100 * lemma.getFrequency() / quantityPagesBySite <= searchFilter) {
+                lemmaList.add(lemma);
+            }
+        }
+        lemmaList.sort(Comparator.comparing(Lemma::getFrequency));
+
         log.info("Фильтрация и сортировка лемм заняла: {}", System.currentTimeMillis() - start);
         return lemmaList;
     }
 
-    /**
-     * По первой, самой редкой лемме из списка, находить все страницы, на которых она встречается.
-     * Далее искать соответствия следующей леммы из этого списка страниц,
-     * а затем повторять операцию по каждой следующей лемме.
-     * Список страниц при этом на каждой итерации должен уменьшаться.
-     * <p>
-     * Если в итоге не осталось ни одной страницы, то выводить пустой список.
-     */
     private void getPagesByLemmas(List<Lemma> sortedLemmaDbList) {
         long start = System.currentTimeMillis();
         Set<Integer> setOfLemmaIds = sortedLemmaDbList.stream().map(Lemma::getId).collect(Collectors.toSet());
@@ -153,7 +144,7 @@ public class SearchServiceImpl implements SearchService {
                 }
             }
         }
-        setPagesId.forEach(id -> rankedPagesIdMap.put(id,  calcPageRelevance(id, setOfLemmaIds)));
+        setPagesId.forEach(id -> rankedPagesIdMap.put(id, calcPageRelevance(id, setOfLemmaIds)));
         log.info("Получение страниц по леммам заняло: {}", System.currentTimeMillis() - start);
     }
 
@@ -162,7 +153,7 @@ public class SearchServiceImpl implements SearchService {
         return localIndexList.stream()
                 .filter(index -> index.getPageId().equals(pageId))
                 .filter(index -> setOfLemmaIds.contains(index.getLemmaId()))
-                        .map(Index::getRank)
+                .map(Index::getRank)
                 .reduce(0f, Float::sum);
     }
 

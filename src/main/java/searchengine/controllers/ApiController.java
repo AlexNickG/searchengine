@@ -2,8 +2,6 @@ package searchengine.controllers;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import searchengine.dto.search.SearchResponse;
 import searchengine.dto.statistics.ResponseMessage;
@@ -24,34 +22,16 @@ public class ApiController {
     @GetMapping("/statistics")
     public StatisticsResponse statistics() {
         return statisticsService.getStatistics();
-//        StatisticsResponse responseMessage = statisticsService.getStatistics();
-//        if (responseMessage.isResult()) {
-//            return new ResponseEntity<>(responseMessage, HttpStatus.OK);
-//        } else {
-//            return new ResponseEntity<>(responseMessage, HttpStatus.INTERNAL_SERVER_ERROR);
-//        }
     }
 
     @GetMapping("/startIndexing")
     public ResponseMessage startIndexing() {
         return indexingService.startIndexing();
-//        ResponseMessage responseMessage = indexingService.startIndexing();
-//        if (responseMessage.isResult()) {
-//            return new ResponseEntity<>(responseMessage, HttpStatus.OK);
-//        } else {
-//            return new ResponseEntity<>(responseMessage, HttpStatus.BAD_REQUEST);
-//        }
     }
 
     @GetMapping("/stopIndexing")
     public ResponseMessage stopIndexing() {
         return indexingService.stopIndexing();
-//        ResponseMessage responseMessage = indexingService.stopIndexing();
-//        if (responseMessage.isResult()) {
-//            return new ResponseEntity<>(responseMessage, HttpStatus.OK);
-//        } else {
-//            return new ResponseEntity<>(responseMessage, HttpStatus.BAD_REQUEST);
-//        }
     }
 
     @PostMapping("/indexPage")

@@ -9,7 +9,9 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.UnknownContentTypeException;
 import searchengine.Repositories.IndexRepository;
 import searchengine.Repositories.LemmaRepository;
@@ -18,8 +20,9 @@ import searchengine.Repositories.SiteRepository;
 import searchengine.config.Config;
 import searchengine.config.SitesList;
 import searchengine.dto.statistics.ResponseMessage;
-import searchengine.exceptions.EmptyQueryException;
+import searchengine.exceptions.BadRequestException;
 import searchengine.exceptions.ResourceDoesNotMatchException;
+import searchengine.exceptions.ResourceForbiddenException;
 import searchengine.model.Index;
 import searchengine.model.Page;
 import searchengine.model.Site;
@@ -48,6 +51,7 @@ public class IndexingServiceImpl implements IndexingService {
     private final LemmaRepository lemmaRepository;
     private final IndexRepository indexRepository;
     private final LemmaFinder lemmaFinder;
+    @Lazy private final IndexingServiceImpl self;
     private final Config config;
     public static ConcurrentSkipListSet<String> globalLinksSet = new ConcurrentSkipListSet<>();
     public static final int INDEXING_WHOLE_SITE = 0;
@@ -67,11 +71,11 @@ public class IndexingServiceImpl implements IndexingService {
         List<Site> indexingSites = siteRepository.findAll();
 
         if (indexingSites.stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
-            throw new EmptyQueryException("Индексация уже запущена");
+            throw new BadRequestException("Индексация уже запущена");
         }
         globalLinksSet.clear();
         stop = false;
-        if (clearDb) clearDb();
+        if (clearDb) self.clearDb();
         if (executor == null) executor = Executors.newFixedThreadPool(sites.getSites().size());
         for (int i = 0; i < sites.getSites().size(); i++) {
             try {
@@ -92,7 +96,7 @@ public class IndexingServiceImpl implements IndexingService {
             stop = true;
             return sendResponse(true, "");
         } else {
-            throw new EmptyQueryException("Индексация не запущена");
+            throw new BadRequestException("Индексация не запущена");
         }
     }
 
@@ -197,7 +201,7 @@ public class IndexingServiceImpl implements IndexingService {
         String finalHost = host;
         Optional<searchengine.config.Site> optionalSite = sites.getSites().stream().filter(s -> s.getUrl().contains(finalHost)).findFirst();
         if (optionalSite.isEmpty() || host.isEmpty()) {
-            throw new ResourceDoesNotMatchException("Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
+            throw new ResourceForbiddenException("Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
         }
         Site site = siteRepository.findByUrl(optionalSite.get().getUrl());
         if (site == null) {
@@ -214,7 +218,7 @@ public class IndexingServiceImpl implements IndexingService {
             return sendResponse(false, "Индексация прервана");
         } catch (MalformedURLException e) {
             log.info("Неправильный адрес страницы: {}", link);
-            throw new EmptyQueryException("Неправильный адрес страницы");
+            throw new BadRequestException("Неправильный адрес страницы");
         }
         lemmaFinder.saveIndex();
         setSiteStatus(site, Status.INDEXED, "");
@@ -243,7 +247,7 @@ public class IndexingServiceImpl implements IndexingService {
             return null;
         }
 
-        if (method == INDEXING_ONE_PAGE) page = updatePage(path, site);
+        if (method == INDEXING_ONE_PAGE) page = self.updatePage(path, site);
         lemmaFinder.collectLemmas(pageRepository.save(fillThePage(page, path, site, content, statusCode)).getId());
         setSiteStatus(site);
         return document;
@@ -275,6 +279,7 @@ public class IndexingServiceImpl implements IndexingService {
         return site;
     }
 
+    @Transactional
     public Page updatePage(String path, Site site) {
         Page page = pageRepository.findByPathAndSiteId(path, site.getId());
         if (page == null) {
@@ -282,11 +287,7 @@ public class IndexingServiceImpl implements IndexingService {
         } else {
             List<Index> indexList = indexRepository.findByPageId(page.getId());
             if (indexList != null) {
-                indexList.forEach(i -> lemmaRepository.decreaseLemmaFreqById(i.getLemmaId()));//TODO: зачем удалять леммы? (они могут относиться к другим страницам)
-                /**
-                 * В случае, если переданная страница уже была проиндексирована,
-                 * перед её индексацией необходимо удалить всю информацию о ней из таблиц page, lemma и index.
-                 */
+                indexList.forEach(i -> lemmaRepository.decreaseLemmaFreqById(i.getLemmaId()));
                 indexRepository.deleteAllInBatch(indexList);
             }
         }
@@ -301,6 +302,7 @@ public class IndexingServiceImpl implements IndexingService {
         return page;
     }
 
+    @Transactional
     @Override
     public void clearDb() {
         indexRepository.deleteIndex();

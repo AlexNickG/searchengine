@@ -1,6 +1,5 @@
 package searchengine.model;
 
-//import javax.persistence.*;
 import io.hypersistence.utils.hibernate.type.basic.PostgreSQLEnumType;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -11,7 +10,6 @@ import org.hibernate.annotations.TypeDef;
 import javax.persistence.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
 @Entity
@@ -24,7 +22,6 @@ public class Site {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
-    //@Column(columnDefinition = "enum NOT NULL") // с этой записью таблица не создается
     @Enumerated(EnumType.STRING)
     @Column(columnDefinition = "ENUM('INDEXING', 'INDEXED', 'FAILED') NOT NULL")
     @Type(type = "pgsql_enum")
@@ -40,6 +37,6 @@ public class Site {
     @OneToMany(mappedBy = "site", cascade = CascadeType.ALL)
     private List<Page> pageList = new ArrayList<>();
     @OneToMany(mappedBy = "site", cascade = CascadeType.ALL)
-    private List<Lemma> lemmaList = new ArrayList<>(); //предлагают убрать ссылку на lemma
+    private List<Lemma> lemmaList = new ArrayList<>();
 
 }

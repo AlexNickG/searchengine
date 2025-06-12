@@ -1,6 +1,5 @@
 package searchengine.model;
 
-import com.sun.istack.NotNull;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -27,7 +26,7 @@ public class Page {
     private int code;
     @Column(columnDefinition = "MEDIUMTEXT NOT NULL")
     private String content;
-    @ManyToMany(cascade = {CascadeType.DETACH, CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REFRESH})//, fetch = FetchType.LAZY) //fetch - ?
+    @ManyToMany(cascade = {CascadeType.DETACH, CascadeType.MERGE, CascadeType.PERSIST, CascadeType.REFRESH})
     @JoinTable(name = "index",
             joinColumns = {@JoinColumn(name = "page_id")},
             inverseJoinColumns = {@JoinColumn(name = "lemma_id")})

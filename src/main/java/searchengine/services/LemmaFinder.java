@@ -61,22 +61,21 @@ public class LemmaFinder {
 
     public void saveLemmas(HashMap<String, Integer> lemmasMap, Page page) {
 
-        int lemmaId;
-        Lemma dbLemma;
+        Integer lemmaId;
 
         for (Map.Entry<String, Integer> entry : lemmasMap.entrySet()) {
             Index indexEntity = new Index();
             synchronized (lemmaRepository) {
-                dbLemma = lemmaRepository.findByLemmaAndSiteId(entry.getKey(), page.getSite().getId());
-                if (dbLemma != null) {
-                    dbLemma.setFrequency(dbLemma.getFrequency() + 1);
+                lemmaId = lemmaRepository.findIdByLemmaAndSiteId(entry.getKey(), page.getSite().getId());
+                if (lemmaId != null) {
+                    lemmaRepository.increaseLemmaFreqById(lemmaId);
                 } else {
-                    dbLemma = new Lemma();
+                    Lemma dbLemma = new Lemma();
                     dbLemma.setSite(page.getSite());
                     dbLemma.setLemma(entry.getKey());
                     dbLemma.setFrequency(1);
+                    lemmaId = lemmaRepository.save(dbLemma).getId();
                 }
-                lemmaId = lemmaRepository.save(dbLemma).getId();
             }
             indexEntity.setLemmaId(lemmaId);
             indexEntity.setPageId(page.getId());
@@ -84,6 +83,7 @@ public class LemmaFinder {
             indexSet.add(indexEntity);
         }
     }
+
 
     public String getLemma(String word) {
         return luceneMorphRus.getNormalForms(word).get(0);
@@ -96,7 +96,7 @@ public class LemmaFinder {
     public boolean isWordSignificant(String word) {
         if (!luceneMorphRus.checkString(word)) {
             log.info("bad word {}", word);
-            return  false;
+            return false;
         }
         for (String wordForm : luceneMorphRus.getMorphInfo(word)) {
             if (config.getLemmaExceptions().contains(wordForm)) {

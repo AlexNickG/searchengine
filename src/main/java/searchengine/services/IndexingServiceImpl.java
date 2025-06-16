@@ -132,17 +132,18 @@ public class IndexingServiceImpl implements IndexingService {
                     setSiteStatus(site, Status.FAILED, "Unknown error");
                 }
             } catch (CancellationException e) {
-                log.error("CancellationException!: {}", e.getMessage());//при нажатии кнопки "остановить индексацию" происходит CancellationException
+                log.info("Индексация остановлена пользователем");//при нажатии кнопки "остановить индексацию" происходит CancellationException
                 setSiteStatus(site, Status.FAILED, "Индексация остановлена пользователем");
             } catch (Exception e) {
-                log.error("Exception!: {}", e.getMessage());
+                log.error("Exception!: {}", e.getStackTrace(), e);
                 setSiteStatus(site, Status.FAILED, "Unknown error");
-            }
-            if ((siteRepository.findAll()).stream().allMatch(s -> s.getStatus() == Status.INDEXED)) {
-                start2 = System.currentTimeMillis();
-                lemmaFinder.saveIndex();
-                log.info("Index saving took {} seconds", (System.currentTimeMillis() - start2) / 1000);
-                log.info("Parsing took {} seconds", (System.currentTimeMillis() - start) / 1000);
+            } finally {
+                if ((siteRepository.findAll()).stream().allMatch(s -> s.getStatus() == Status.INDEXED || s.getStatus() == Status.FAILED)) {
+                    start2 = System.currentTimeMillis();
+                    lemmaFinder.saveIndex();
+                    log.info("Index saving took {} seconds", (System.currentTimeMillis() - start2) / 1000);
+                    log.info("Parsing took {} seconds", (System.currentTimeMillis() - start) / 1000);
+                }
             }
         }
     }

@@ -51,19 +51,20 @@ public class IndexingServiceImpl implements IndexingService {
     private final LemmaRepository lemmaRepository;
     private final IndexRepository indexRepository;
     private final LemmaFinder lemmaFinder;
-    @Lazy private final IndexingServiceImpl self;
+    @Lazy
+    private final IndexingServiceImpl self;
     private final Config config;
     public static ConcurrentSkipListSet<String> globalLinksSet = new ConcurrentSkipListSet<>();
     public static final int INDEXING_WHOLE_SITE = 0;
     public static final int INDEXING_ONE_PAGE = 1;
     public static volatile boolean stop;
-    long start;
-    long start2;
     private String userAgent;
     private String referrer;
     private int timeout;
     @Value("${indexing-settings.clearDb}")
     private boolean clearDb;
+    private long start;
+    private long start2;
 
     @Override
     public ResponseMessage startIndexing() {
@@ -101,7 +102,6 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     public class StartIndexing implements Runnable {
-        private final ForkJoinPool forkJoinPool = new ForkJoinPool();
         private final Site site = new Site();
         private final int siteNumber;
         private final String link;
@@ -119,24 +119,14 @@ public class IndexingServiceImpl implements IndexingService {
             setSiteStatus(site, Status.INDEXING, "");
 
             try {
-                forkJoinPool.invoke(new IndexingTask(link, site));
-                if (forkJoinPool.isShutdown() || forkJoinPool.isTerminated()) { //what is the difference between isShutdown and isTerminated?
-                    log.info("isShutdown: {}", forkJoinPool.isShutdown());
-                    setSiteStatus(site, Status.FAILED, "Индексация остановлена пользователем");
-                } else if (forkJoinPool.isQuiescent()) {
-                    log.info("isQuiescent, indexSet size = {}", lemmaFinder.getIndexSet().size());
-                    setSiteStatus(site, Status.INDEXED, "");
-                    forkJoinPool.shutdown();
-                } else {
-                    log.info("pool is stopped by some reason {}", forkJoinPool.getPoolSize());
-                    setSiteStatus(site, Status.FAILED, "Unknown error");
-                }
+                new ForkJoinPool().invoke(new IndexingTask(link, site));
+                setSiteStatus(site, Status.INDEXED, "");
             } catch (CancellationException e) {
-                log.info("Индексация остановлена пользователем");//при нажатии кнопки "остановить индексацию" происходит CancellationException
                 setSiteStatus(site, Status.FAILED, "Индексация остановлена пользователем");
-            } catch (Exception e) {
-                log.error("Exception!: {}", e.getStackTrace(), e);
-                setSiteStatus(site, Status.FAILED, "Unknown error");
+                log.info("Индексация остановлена пользователем");//при нажатии кнопки "остановить индексацию" происходит CancellationException
+            } catch (RuntimeException e) {
+                log.info("Не удалось подключиться к сайту {}", siteName);
+                setSiteStatus(site, Status.FAILED, "Не удалось подключиться к сайту");
             } finally {
                 if ((siteRepository.findAll()).stream().allMatch(s -> s.getStatus() == Status.INDEXED || s.getStatus() == Status.FAILED)) {
                     start2 = System.currentTimeMillis();
@@ -162,15 +152,10 @@ public class IndexingServiceImpl implements IndexingService {
 
         @Override
         protected void compute() {
-            globalLinksSet.add(link);
             Document document;
-            try {
-                Thread.sleep(timeout);
-                document = connectToPageAndSaveIt(link, site, INDEXING_WHOLE_SITE);
-            } catch (InterruptedException | MalformedURLException e) {
-                log.error("Error: {}", e.getMessage(), e);
-                return;
-            }
+            globalLinksSet.add(link);
+
+            document = connectToPageAndSaveIt(link, site, INDEXING_WHOLE_SITE);
             if (document == null) return;
 
             Set<String> linksSet = document.select("a").stream()
@@ -181,7 +166,6 @@ public class IndexingServiceImpl implements IndexingService {
                     .collect(Collectors.toSet());
             if (IndexingServiceImpl.stop && getPool() != null) {
                 getPool().shutdownNow();
-                return;
             }
             linksSet.removeAll(IndexingServiceImpl.globalLinksSet);
             IndexingServiceImpl.globalLinksSet.addAll(linksSet);
@@ -214,24 +198,30 @@ public class IndexingServiceImpl implements IndexingService {
                 log.error("Данная страница недоступна: {}", link);
                 throw new ResourceDoesNotMatchException("Данная страница недоступна");
             }
-        } catch (InterruptedException e) {
-            log.error("Индексация прервана: {}", e.getMessage());
-            return sendResponse(false, "Индексация прервана");
-        } catch (MalformedURLException e) {
-            log.info("Неправильный адрес страницы: {}", link);
-            throw new BadRequestException("Неправильный адрес страницы");
+        } catch (RuntimeException e) {
+            log.info("Не удалось подключиться к сайту");
+            throw new ResourceDoesNotMatchException("Не удалось подключиться к сайту");
         }
         lemmaFinder.saveIndex();
         setSiteStatus(site, Status.INDEXED, "");
         return sendResponse(true, "");//По ТЗ формат ответа не использует поле error; можно ли отправить пустое сообщение?
     }
 
-    public Document connectToPageAndSaveIt(String link, Site site, int method) throws MalformedURLException, InterruptedException {
-        Thread.sleep(timeout);
+    public Document connectToPageAndSaveIt(String link, Site site, int method) throws RuntimeException {
+        try {
+            Thread.sleep(timeout);
+        } catch (InterruptedException e) {
+            throw new CancellationException("Индексация остановлена пользователем");
+        }
         Connection connection = Jsoup.connect(link).ignoreHttpErrors(true).followRedirects(false);
         Document document;
         String content = "";
-        String path = new URL(link).getPath();
+        String path;
+        try {
+            path = new URL(link).getPath();
+        } catch (MalformedURLException e) {
+            return null;
+        }
         Page page = new Page();
         int statusCode;
 
@@ -240,12 +230,16 @@ public class IndexingServiceImpl implements IndexingService {
             content = document.toString();
             statusCode = connection.response().statusCode();
         } catch (IOException e) {
-            log.error("IOException: {} {}", e.getMessage(), link);
+            if (link.equals(site.getUrl())) {
+                throw new RuntimeException("Не удалось подключиться к сайту");
+            }
+            log.error("Страница недоступна: {} {}", e.getMessage(), link);
             document = null;
             statusCode = 404; //if server can't answer
         } catch (UnknownContentTypeException e) {
-            log.error("UnknownContentTypeException: {}{}", e.getMessage(), link);
-            return null;
+            log.error("Неподдерживаемый контент: {}{}", e.getMessage(), link);
+            document = null;
+            statusCode = 415; //Unsupported Media Type
         }
 
         if (method == INDEXING_ONE_PAGE) page = self.updatePage(path, site);
@@ -273,7 +267,7 @@ public class IndexingServiceImpl implements IndexingService {
         siteRepository.saveAndFlush(site);
     }
 
-    public Site createNewSiteEntity (String name, String url) {
+    public Site createNewSiteEntity(String name, String url) {
         Site site = new Site();
         site.setName(name);
         site.setUrl(url);

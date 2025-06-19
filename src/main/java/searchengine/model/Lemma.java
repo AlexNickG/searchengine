@@ -34,4 +34,17 @@ public class Lemma {
                 ", frequency=" + frequency +
                 '}';
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) return false;
+
+        Lemma lemma1 = (Lemma) o;
+        return lemma.equals(lemma1.lemma);
+    }
+
+    @Override
+    public int hashCode() {
+        return lemma.hashCode();
+    }
 }

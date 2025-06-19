@@ -51,7 +51,7 @@ public class SearchServiceImpl implements SearchService {
     private Map<Integer, Float> rankedPagesIdMap;
     private List<Lemma> sortedLemmaDbList;
     private Set<Index> localIndexList;
-    private Set<String> queryLemmasSet;
+    private Set<String> querySet;
     @Value("${search-settings.searchFilter}")
     private int searchFilter;
 
@@ -68,7 +68,7 @@ public class SearchServiceImpl implements SearchService {
             rankedPagesIdMap = new LinkedHashMap<>();
             sortedLemmaDbList = new ArrayList<>();
             localIndexList = new HashSet<>();
-            queryLemmasSet = new HashSet<>();
+            querySet = new HashSet<>();
             initializeSearch(query, site);
         }
         return paginateResults(offset, limit);
@@ -78,7 +78,7 @@ public class SearchServiceImpl implements SearchService {
         extractQueryLemmas(query);
         List<Site> siteList = (site == null || site.isEmpty()) ? siteRepository.findAll() : Collections.singletonList(siteRepository.findByUrl(site));
         for (Site dbSite : siteList) {
-            sortedLemmaDbList = filterAndSortLemmas(queryLemmasSet, dbSite);
+            sortedLemmaDbList = filterAndSortLemmas(querySet, dbSite);
             if (!sortedLemmaDbList.isEmpty()) {
                 getPagesByLemmas(sortedLemmaDbList);
             }
@@ -97,17 +97,16 @@ public class SearchServiceImpl implements SearchService {
         for (String word : queryWordsArray) {
             if (!word.isEmpty()) {
                 if (lemmaFinder.isWordSignificant(word)) {
-                    queryLemmasSet.add(luceneMorph.getNormalForms(word).get(0));
+                    querySet.add(luceneMorph.getNormalForms(word).get(0));
                 }
             }
         }
     }
 
-    private List<Lemma> filterAndSortLemmas(Set<String> queryLemmasSet, Site dbSite) {
-        long start = System.currentTimeMillis();
+    private List<Lemma> filterAndSortLemmas(Set<String> querySet, Site dbSite) {
         List<Lemma> lemmaList = new ArrayList<>();
         int quantityPagesBySite = pageRepository.getSizeBySiteId(dbSite.getId());
-        for (String queryWord : queryLemmasSet) {
+        for (String queryWord : querySet) {
             Lemma lemma = lemmaRepository.findByLemmaAndSiteId(queryWord, dbSite.getId());
             if (lemma == null) {
                 return new ArrayList<>();
@@ -117,12 +116,10 @@ public class SearchServiceImpl implements SearchService {
         }
         lemmaList.sort(Comparator.comparing(Lemma::getFrequency));
 
-        log.info("Фильтрация и сортировка лемм заняла: {}", System.currentTimeMillis() - start);
         return lemmaList;
     }
 
     private void getPagesByLemmas(List<Lemma> sortedLemmaDbList) {
-        long start = System.currentTimeMillis();
         Set<Integer> setOfLemmaIds = sortedLemmaDbList.stream().map(Lemma::getId).collect(Collectors.toSet());
 
         for (int lemmaId : setOfLemmaIds) {
@@ -145,7 +142,6 @@ public class SearchServiceImpl implements SearchService {
             }
         }
         setPagesId.forEach(id -> rankedPagesIdMap.put(id, calcPageRelevance(id, setOfLemmaIds)));
-        log.info("Получение страниц по леммам заняло: {}", System.currentTimeMillis() - start);
     }
 
     private float calcPageRelevance(int pageId, Set<Integer> setOfLemmaIds) {
@@ -158,24 +154,19 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private void calculatePageRelevanceAndSort() {
-        long start = System.currentTimeMillis();
         float maxRank = rankedPagesIdMap.values().stream().max(Float::compare).orElse(0.1f);
         rankedPagesIdMap = rankedPagesIdMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue() / maxRank));
         rankedPagesIdMap = rankedPagesIdMap.entrySet().stream().sorted(Map.Entry.<Integer, Float>comparingByValue().reversed()).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (oldValue, newValue) -> oldValue, LinkedHashMap::new));
-        log.info("Расчет абсолютной релевантности страниц и их сортировка заняла: {}", System.currentTimeMillis() - start);
     }
 
     private void prepareSearchResponse(int offset, int limit) {
-        long start = System.currentTimeMillis();
         int end = Math.min(offset + limit, rankedPagesIdMap.size());
         List<Map.Entry<Integer, Float>> entries = new ArrayList<>(rankedPagesIdMap.entrySet());
 
         for (int i = offset; i < end; i++) {
             Page page = pageRepository.findById(entries.get(i).getKey()).orElseThrow();
             Float relevance = entries.get(i).getValue();
-            long start1 = System.currentTimeMillis();
             Document doc = Jsoup.parse(page.getContent());
-            log.info("Парсинг jsoup занял: {}", System.currentTimeMillis() - start1);
             SearchData searchData = new SearchData();
             List<String> text = Arrays.asList(lemmaFinder.prepareStringArray(doc.body().text()));
 
@@ -195,7 +186,6 @@ public class SearchServiceImpl implements SearchService {
 
         searchResponse.setResult(true);
         searchResponse.setCount(rankedPagesIdMap.size());
-        log.info("Подготовка ответа заняла: {}", System.currentTimeMillis() - start);
     }
 
     private SearchResponse paginateResults(int offset, int limit) {
@@ -208,8 +198,8 @@ public class SearchServiceImpl implements SearchService {
     private String getSnippet(List<String> text) {
         Map<List<String>, Integer> snippetMap = new HashMap<>();
         for (String word : text) {
-            for (String queryWord : queryLemmasSet) {
-                if (getWordNormalForm(queryWord).equals(getWordNormalForm(word))) {
+            for (String queryWord : querySet) {
+                if (queryWord.equals(getWordNormalForm(word))) {
                     int index = text.indexOf(word);
                     snippetMap.put(text.subList(Math.max(0, index - 5), Math.min(index + 5, text.size())), 0);
                 }
@@ -220,8 +210,8 @@ public class SearchServiceImpl implements SearchService {
             List<String> snippetText = entry.getKey();
             int count = 0;
             for (String word : snippetText) {
-                for (Lemma lemma : sortedLemmaDbList) {
-                    if (lemma.getLemma().equals(getWordNormalForm(word))) {
+                for (String queryWord : querySet) {
+                    if (queryWord.equals(getWordNormalForm(word))) {
                         count++;
                     }
                 }
@@ -237,10 +227,9 @@ public class SearchServiceImpl implements SearchService {
 
         String wholeSnippetText = String.join(" ... ", topSnippetList);
         List<String> words = Arrays.stream(wholeSnippetText.trim().split("\\s+")).toList();
-        List<String> queryWordsList = sortedLemmaDbList.stream().map(Lemma::getLemma).toList();
 
         return "..." + words.stream()
-                .map(word -> queryWordsList.contains(getWordNormalForm(word.toLowerCase(Locale.ROOT))) ? "<b>" + word + "</b>" : word)
+                .map(word -> querySet.contains(getWordNormalForm(word.toLowerCase(Locale.ROOT))) ? "<b>" + word + "</b>" : word)
                 .collect(Collectors.joining(" ")) + "...";
     }
 

@@ -51,7 +51,7 @@ public class SearchServiceImpl implements SearchService {
     private Map<Integer, Float> rankedPagesIdMap;
     private List<Lemma> sortedLemmaDbList;
     private Set<Index> localIndexList;
-    private Set<String> querySet;
+    private Set<String> querySetNormal;
     @Value("${search-settings.searchFilter}")
     private int searchFilter;
 
@@ -68,7 +68,7 @@ public class SearchServiceImpl implements SearchService {
             rankedPagesIdMap = new LinkedHashMap<>();
             sortedLemmaDbList = new ArrayList<>();
             localIndexList = new HashSet<>();
-            querySet = new HashSet<>();
+            querySetNormal = new HashSet<>();
             initializeSearch(query, site);
         }
         return paginateResults(offset, limit);
@@ -78,7 +78,7 @@ public class SearchServiceImpl implements SearchService {
         extractQueryLemmas(query);
         List<Site> siteList = (site == null || site.isEmpty()) ? siteRepository.findAll() : Collections.singletonList(siteRepository.findByUrl(site));
         for (Site dbSite : siteList) {
-            sortedLemmaDbList = filterAndSortLemmas(querySet, dbSite);
+            sortedLemmaDbList = filterAndSortLemmas(querySetNormal, dbSite);
             if (!sortedLemmaDbList.isEmpty()) {
                 getPagesByLemmas(sortedLemmaDbList);
             }
@@ -97,16 +97,16 @@ public class SearchServiceImpl implements SearchService {
         for (String word : queryWordsArray) {
             if (!word.isEmpty()) {
                 if (lemmaFinder.isWordSignificant(word)) {
-                    querySet.add(luceneMorph.getNormalForms(word).get(0));
+                    querySetNormal.add(luceneMorph.getNormalForms(word).get(0));
                 }
             }
         }
     }
 
-    private List<Lemma> filterAndSortLemmas(Set<String> querySet, Site dbSite) {
+    private List<Lemma> filterAndSortLemmas(Set<String> querySetNormal, Site dbSite) {
         List<Lemma> lemmaList = new ArrayList<>();
         int quantityPagesBySite = pageRepository.getSizeBySiteId(dbSite.getId());
-        for (String queryWord : querySet) {
+        for (String queryWord : querySetNormal) {
             Lemma lemma = lemmaRepository.findByLemmaAndSiteId(queryWord, dbSite.getId());
             if (lemma == null) {
                 return new ArrayList<>();
@@ -198,7 +198,7 @@ public class SearchServiceImpl implements SearchService {
     private String getSnippet(List<String> text) {
         Map<List<String>, Integer> snippetMap = new HashMap<>();
         for (String word : text) {
-            for (String queryWord : querySet) {
+            for (String queryWord : querySetNormal) {
                 if (queryWord.equals(getWordNormalForm(word))) {
                     int index = text.indexOf(word);
                     snippetMap.put(text.subList(Math.max(0, index - 5), Math.min(index + 5, text.size())), 0);
@@ -210,7 +210,7 @@ public class SearchServiceImpl implements SearchService {
             List<String> snippetText = entry.getKey();
             int count = 0;
             for (String word : snippetText) {
-                for (String queryWord : querySet) {
+                for (String queryWord : querySetNormal) {
                     if (queryWord.equals(getWordNormalForm(word))) {
                         count++;
                     }
@@ -229,7 +229,7 @@ public class SearchServiceImpl implements SearchService {
         List<String> words = Arrays.stream(wholeSnippetText.trim().split("\\s+")).toList();
 
         return "..." + words.stream()
-                .map(word -> querySet.contains(getWordNormalForm(word.toLowerCase(Locale.ROOT))) ? "<b>" + word + "</b>" : word)
+                .map(word -> querySetNormal.contains(getWordNormalForm(word.toLowerCase(Locale.ROOT))) ? "<b>" + word + "</b>" : word)
                 .collect(Collectors.joining(" ")) + "...";
     }
 

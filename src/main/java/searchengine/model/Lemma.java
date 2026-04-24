@@ -1,16 +1,17 @@
 package searchengine.model;
 
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import javax.persistence.*;
 import java.util.List;
 
 @Entity
 @Getter
 @Setter
 @NoArgsConstructor
+@Table(name = "lemma", uniqueConstraints = @UniqueConstraint(name = "uq_lemma_site", columnNames = {"lemma", "site_id"}))
 public class Lemma {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

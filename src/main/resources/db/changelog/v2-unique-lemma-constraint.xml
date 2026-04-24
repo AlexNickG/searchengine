@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!--
+        Required for PostgreSQL ON CONFLICT (lemma, site_id) upsert in LemmaRepository.
+        If upgrading an existing database: run clearDb first to avoid duplicate-row failures.
+    -->
+    <changeSet id="2" author="Alex">
+        <addUniqueConstraint
+                tableName="lemma"
+                columnNames="lemma, site_id"
+                constraintName="uq_lemma_site"/>
+    </changeSet>
+
+</databaseChangeLog>

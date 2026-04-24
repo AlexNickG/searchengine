@@ -14,9 +14,20 @@ public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
     @Query(value = "delete from Lemma")
     void deleteLemmas();
 
+    /**
+     * Atomically inserts a new lemma or increments its frequency if (lemma, site_id) already exists.
+     * Requires unique constraint uq_lemma_site on (lemma, site_id) — see v2-unique-lemma-constraint.xml.
+     */
+    @Transactional
+    @Modifying
+    @Query(value = "INSERT INTO lemma (lemma, site_id, frequency) VALUES (?1, ?2, 1) " +
+                   "ON CONFLICT (lemma, site_id) DO UPDATE SET frequency = lemma.frequency + 1",
+           nativeQuery = true)
+    void upsertLemma(String lemma, int siteId);
+
     Lemma findByLemmaAndSiteId(String lemma, int siteId);
 
-    @Query("select id from Lemma l where l.lemma = ?1 and l.site.id = ?2")
+    @Query("select l.id from Lemma l where l.lemma = ?1 and l.site.id = ?2")
     Integer findIdByLemmaAndSiteId(String lemma, int siteId);
 
     @Query("select count(*) from Lemma l where l.site.id = ?1")

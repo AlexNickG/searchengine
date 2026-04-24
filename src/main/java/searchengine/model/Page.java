@@ -4,8 +4,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import javax.persistence.*;
-import javax.persistence.Index;
+import jakarta.persistence.*;
+import jakarta.persistence.Index;
 import java.util.List;
 
 @Entity

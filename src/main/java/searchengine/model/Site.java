@@ -1,13 +1,10 @@
 package searchengine.model;
 
-import io.hypersistence.utils.hibernate.type.basic.PostgreSQLEnumType;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.Type;
-import org.hibernate.annotations.TypeDef;
 
-import javax.persistence.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,7 +13,6 @@ import java.util.List;
 @Getter
 @Setter
 @NoArgsConstructor
-@TypeDef(name = "pgsql_enum", typeClass = PostgreSQLEnumType.class)
 public class Site {
 
     @Id
@@ -24,7 +20,6 @@ public class Site {
     private Integer id;
     @Enumerated(EnumType.STRING)
     @Column(columnDefinition = "ENUM('INDEXING', 'INDEXED', 'FAILED') NOT NULL")
-    @Type(type = "pgsql_enum")
     private Status status;
     @Column(name = "status_time", columnDefinition = "DATETIME NOT NULL")
     private LocalDateTime statusTime;

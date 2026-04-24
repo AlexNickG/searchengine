@@ -9,4 +9,9 @@
     </changeSet>
 
     <include file="db/changelog/liquibase-outputChangeLog_init.xml"/>
+    <include file="db/changelog/v2-unique-lemma-constraint.xml"/>
+
+    <changeSet id="3" author="Alex">
+        <sql>ALTER TABLE site ALTER COLUMN status TYPE VARCHAR(10) USING status::text</sql>
+    </changeSet>
 </databaseChangeLog>

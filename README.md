@@ -154,6 +154,24 @@ java -jar search-engine-0.0.1-SNAPSHOT.jar
 После запуска приложения, перейдите в браузере по адресу `http://localhost:8080/` для доступа к интерфейсу поиска.
 При работе приложения в подпапке logs проекта создаются лог-файлы логов stderr.log и stdinfo.log, в которых можно найти информацию о процессе работы приложения.
 
+Как запустить
+
+mvn spring-boot:run
+
+При старте Liquibase создаст app_user, DataInitializer создаст пользователя и выведет в лог:
+
+=== Default admin user created (admin/changeme). Change the password immediately! ===
+
+Перейдите на http://localhost:8080/ → редирект на /login → войдите как admin / changeme.
+
+Добавить нового USER-пользователя
+
+Сгенерируйте BCrypt-хеш и вставьте в БД:
+INSERT INTO app_user (username, password, role, enabled)
+VALUES ('user1', '$2a$10$...hash...', 'ROLE_USER', true);
+Хеш можно получить через любой BCrypt-генератор онлайн или командой в коде.
+
+
 
 
 

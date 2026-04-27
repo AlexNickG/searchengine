@@ -16,6 +16,10 @@ public interface IndexRepository extends JpaRepository<Index, Integer> {
     @Query(value = "delete from Index")
     void deleteIndex();
 
+    @Modifying
+    @Query(value = "DELETE FROM \"index\" WHERE page_id IN (SELECT id FROM page WHERE site_id = ?1)", nativeQuery = true)
+    void deleteBySiteId(int siteId);
+
     Index findByPageIdAndLemmaId(int pageId, int lemmaId);
 
     List<Index> findByPageId(int pageId);

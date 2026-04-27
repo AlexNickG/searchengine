@@ -14,6 +14,10 @@ public interface LemmaRepository extends JpaRepository<Lemma, Integer> {
     @Query(value = "delete from Lemma")
     void deleteLemmas();
 
+    @Modifying
+    @Query("delete from Lemma l where l.site.id = ?1")
+    void deleteBySiteId(int siteId);
+
     /**
      * Atomically inserts a new lemma or increments its frequency if (lemma, site_id) already exists.
      * Requires unique constraint uq_lemma_site on (lemma, site_id) — see v2-unique-lemma-constraint.xml.

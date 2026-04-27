@@ -16,5 +16,6 @@
     </changeSet>
 
     <include file="db/changelog/v3-users-table.xml"/>
+    <include file="db/changelog/v4-site-config.xml"/>
 
 </databaseChangeLog>

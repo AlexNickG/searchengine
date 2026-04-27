@@ -53,4 +53,13 @@ public class PageProcessorService {
         siteRepository.deleteAllSites();
         log.info("DB cleared");
     }
+
+    @Transactional
+    public void clearSite(int siteId) {
+        indexRepository.deleteBySiteId(siteId);
+        lemmaRepository.deleteBySiteId(siteId);
+        pageRepository.deleteBySiteId(siteId);
+        siteRepository.deleteById(siteId);
+        log.info("Cleared data for site id={}", siteId);
+    }
 }

@@ -7,7 +7,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import searchengine.Repositories.IndexRepository;
 import searchengine.Repositories.LemmaRepository;
@@ -57,28 +56,30 @@ public class IndexingServiceImpl implements IndexingService {
     public static volatile boolean stop;
 
     private int connectionTimeout = 15_000; // JSoup read/connect timeout, ms
-    @Value("${indexing-settings.clearDb}")
-    private boolean clearDb;
     private long start;
     private long start2;
 
     @Override
     public ResponseMessage startIndexing() {
-        List<Site> indexingSites = siteRepository.findAll();
-        if (indexingSites.stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
+        if (siteRepository.findAll().stream().anyMatch(site -> site.getStatus() == Status.INDEXING)) {
             throw new BadRequestException("Индексация уже запущена");
         }
+
+        List<searchengine.config.Site> sitesToIndex = sites.getSites().stream()
+                .filter(configSite -> {
+                    Site dbSite = siteRepository.findByUrl(configSite.getUrl());
+                    return dbSite == null || dbSite.getStatus() != Status.INDEXED;
+                })
+                .toList();
+
+        if (sitesToIndex.isEmpty()) {
+            throw new BadRequestException("Все сайты уже проиндексированы");
+        }
+
         globalLinksSet.clear();
         stop = false;
-        if (clearDb) pageProcessorService.clearDb();
-        executor = Executors.newFixedThreadPool(sites.getSites().size());
-        for (int i = 0; i < sites.getSites().size(); i++) {
-            try {
-                executor.submit(new StartIndexing(i));
-            } catch (MalformedURLException e) {
-                throw new RuntimeException(e);
-            }
-        }
+        executor = Executors.newFixedThreadPool(sitesToIndex.size());
+        sitesToIndex.forEach(configSite -> executor.submit(new StartIndexing(configSite)));
         start = System.currentTimeMillis();
         return sendResponse(true, "");
     }
@@ -96,17 +97,20 @@ public class IndexingServiceImpl implements IndexingService {
 
     public class StartIndexing implements Runnable {
         private final Site site = new Site();
-        private final int siteNumber;
         private final String link;
+        private final String siteName;
 
-        public StartIndexing(int siteNumber) throws MalformedURLException {
-            this.siteNumber = siteNumber;
-            link = sites.getSites().get(siteNumber).getUrl();
+        public StartIndexing(searchengine.config.Site configSite) {
+            this.link = configSite.getUrl();
+            this.siteName = configSite.getName();
         }
 
         @Override
         public void run() {
-            String siteName = sites.getSites().get(siteNumber).getName();
+            Site existing = siteRepository.findByUrl(link);
+            if (existing != null) {
+                pageProcessorService.clearSite(existing.getId());
+            }
             site.setUrl(link);
             site.setName(siteName);
             setSiteStatus(site, Status.INDEXING, "");

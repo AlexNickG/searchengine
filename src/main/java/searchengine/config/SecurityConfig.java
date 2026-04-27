@@ -23,7 +23,8 @@ public class SecurityConfig {
                         "/api/startIndexing",
                         "/api/stopIndexing",
                         "/api/indexPage",
-                        "/api/deleteAll"
+                        "/api/deleteAll",
+                        "/api/admin/**"
                 ).hasRole("ADMIN")
                 .anyRequest().authenticated()
             )

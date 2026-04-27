@@ -127,6 +127,36 @@
                     </div>
                   </form>
                 </div>
+
+                <div id="sites-config-section" style="margin-top:28px;">
+                  <h3 style="margin-bottom:12px;">Сайты для индексации</h3>
+                  <table id="sites-table" style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:14px;">
+                    <thead>
+                      <tr style="background:#f0f0f0;">
+                        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid #ddd;">URL</th>
+                        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid #ddd;">Название</th>
+                        <th style="padding:8px 10px;border-bottom:1px solid #ddd;width:100px;"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="sites-tbody"></tbody>
+                  </table>
+
+                  <div id="site-form-wrap" style="background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;padding:16px;max-width:560px;">
+                    <h4 id="site-form-title" style="margin:0 0 12px;font-size:14px;">Добавить сайт</h4>
+                    <input type="hidden" id="site-edit-id"/>
+                    <div class="form-group form-group_row" style="margin-bottom:10px;">
+                      <input class="form-input" id="site-url-input" type="text" placeholder="https://example.com/" style="flex:2;"/>
+                    </div>
+                    <div class="form-group form-group_row" style="margin-bottom:10px;">
+                      <input class="form-input" id="site-name-input" type="text" placeholder="Название сайта" style="flex:2;"/>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                      <button class="btn btn_primary" id="site-save-btn" type="button">Сохранить</button>
+                      <button class="btn" id="site-cancel-btn" type="button" style="display:none;">Отмена</button>
+                    </div>
+                    <div id="site-form-error" style="color:#c0392b;font-size:13px;margin-top:8px;display:none;"></div>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="Tabs-block" id="search">
@@ -177,5 +207,107 @@
         if (token && header) xhr.setRequestHeader(header, token);
       });
     })();
+  </script>
+  <script>
+    /* ---- Site Config Management ---- */
+    var sitesApi = backendApiUrl + '/admin/sites';
+
+    function loadSites() {
+      $.getJSON(sitesApi, function (data) {
+        var tbody = $('#sites-tbody').empty();
+        if (!data || data.length === 0) {
+          tbody.append('<tr><td colspan="3" style="padding:8px 10px;color:#999;">Сайты не добавлены</td></tr>');
+          return;
+        }
+        data.forEach(function (s) {
+          tbody.append(
+            '<tr data-id="' + s.id + '">' +
+              '<td style="padding:7px 10px;border-bottom:1px solid #eee;word-break:break-all;">' + $('<span>').text(s.url).html() + '</td>' +
+              '<td style="padding:7px 10px;border-bottom:1px solid #eee;">' + $('<span>').text(s.name).html() + '</td>' +
+              '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;">' +
+                '<button class="btn btn_primary site-edit-btn" data-id="' + s.id + '" data-url="' + $('<span>').text(s.url).html() + '" data-name="' + $('<span>').text(s.name).html() + '" style="padding:3px 10px;font-size:12px;margin-right:4px;">Изменить</button>' +
+                '<button class="btn site-del-btn" data-id="' + s.id + '" style="padding:3px 10px;font-size:12px;background:#e74c3c;color:#fff;border-color:#e74c3c;">Удалить</button>' +
+              '</td>' +
+            '</tr>'
+          );
+        });
+      });
+    }
+
+    function resetSiteForm() {
+      $('#site-edit-id').val('');
+      $('#site-url-input').val('');
+      $('#site-name-input').val('');
+      $('#site-form-title').text('Добавить сайт');
+      $('#site-cancel-btn').hide();
+      $('#site-form-error').hide().text('');
+    }
+
+    $(document).on('click', '.site-edit-btn', function () {
+      var $btn = $(this);
+      $('#site-edit-id').val($btn.data('id'));
+      $('#site-url-input').val($btn.data('url'));
+      $('#site-name-input').val($btn.data('name'));
+      $('#site-form-title').text('Изменить сайт');
+      $('#site-cancel-btn').show();
+      $('#site-form-error').hide();
+      $('html, body').animate({ scrollTop: $('#site-form-wrap').offset().top - 20 }, 200);
+    });
+
+    $(document).on('click', '.site-del-btn', function () {
+      var id = $(this).data('id');
+      if (!confirm('Удалить сайт?')) return;
+      $.ajax({
+        url: sitesApi + '/' + id,
+        type: 'DELETE',
+        success: function () { loadSites(); },
+        error: function () { alert('Ошибка при удалении'); }
+      });
+    });
+
+    $('#site-cancel-btn').on('click', resetSiteForm);
+
+    $('#site-save-btn').on('click', function () {
+      var id  = $('#site-edit-id').val();
+      var url = $.trim($('#site-url-input').val());
+      var name = $.trim($('#site-name-input').val());
+      var $err = $('#site-form-error');
+
+      if (!url || !name) {
+        $err.text('Заполните URL и название').show();
+        return;
+      }
+      if (!/^https?:\/\/.+/.test(url)) {
+        $err.text('URL должен начинаться с http:// или https://').show();
+        return;
+      }
+
+      var method = id ? 'PUT' : 'POST';
+      var endpoint = id ? sitesApi + '/' + id : sitesApi;
+
+      $.ajax({
+        url: endpoint,
+        type: method,
+        contentType: 'application/json',
+        data: JSON.stringify({ url: url, name: name }),
+        success: function () {
+          resetSiteForm();
+          loadSites();
+        },
+        error: function (xhr) {
+          var msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Ошибка сохранения';
+          $err.text(msg).show();
+        }
+      });
+    });
+
+    // Load sites when Management tab becomes active
+    $('a[href="#management"]').on('click', function () {
+      loadSites();
+    });
+    // Also load on page ready if management tab is active
+    $(function () {
+      if (window.location.hash === '#management') loadSites();
+    });
   </script>
 </body></html>

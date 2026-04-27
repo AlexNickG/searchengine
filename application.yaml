@@ -2,13 +2,12 @@ server:
   port: 8080
 
 spring:
+  config:
+    import: optional:file:./.env[.properties]
   datasource:
-    #username: root
-    #password: pass
-    #url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true&reWriteBatchedInserts=true
-    username: postgres
-    password: postgrespw
-    url: jdbc:postgresql://localhost:5432/parse
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/parse}
     driver-class-name: org.postgresql.Driver
   jpa:
     database: postgresql

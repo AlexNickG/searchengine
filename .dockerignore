@@ -1,0 +1,10 @@
+.git
+.github
+.claude
+.idea
+target/*.jar.original
+target/libs/
+target/classes/
+target/generated-sources/
+logs/
+*.md

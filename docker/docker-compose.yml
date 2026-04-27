@@ -3,9 +3,11 @@ services:
     image: postgres:16
     ports:
       - "5432:5432"
+    env_file:
+      - ../.env
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgrespw
+      - POSTGRES_USER=${DB_USERNAME}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
       - POSTGRES_DB=parse
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql

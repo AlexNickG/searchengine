@@ -123,7 +123,7 @@ public class IndexingServiceImpl implements IndexingService {
                 log.info("Индексация остановлена пользователем");
             } catch (RuntimeException e) {
                 log.error("Ошибка индексации сайта {}: {}", siteName, e.getMessage(), e);
-                setSiteStatus(site, Status.FAILED, "Не удалось подключиться к сайту");
+                setSiteStatus(site, Status.FAILED, e.getMessage());
             } finally {
                 boolean allDone = siteRepository.findAll().stream()
                         .allMatch(s -> s.getStatus() == Status.INDEXED || s.getStatus() == Status.FAILED);
@@ -223,8 +223,8 @@ public class IndexingServiceImpl implements IndexingService {
                 throw new ResourceDoesNotMatchException("Данная страница недоступна");
             }
         } catch (RuntimeException e) {
-            log.info("Не удалось подключиться к сайту");
-            throw new ResourceDoesNotMatchException("Не удалось подключиться к сайту");
+            log.info("Не удалось подключиться к странице: {}", e.getMessage());
+            throw new ResourceDoesNotMatchException("Не удалось подключиться к странице: " + e.getMessage());
         }
         lemmaFinder.saveIndex();
         setSiteStatus(site, Status.INDEXED, "");
@@ -264,7 +264,7 @@ public class IndexingServiceImpl implements IndexingService {
             statusCode = connection.response().statusCode();
         } catch (IOException e) {
             if (link.equals(site.getUrl())) {
-                throw new RuntimeException("Не удалось подключиться к сайту");
+                throw new RuntimeException("Не удалось подключиться к сайту: " + e.getMessage());
             }
             log.error("Страница недоступна: {} {}", e.getMessage(), link);
             document = null;
@@ -273,6 +273,10 @@ public class IndexingServiceImpl implements IndexingService {
             log.error("Неподдерживаемый контент: {} {}", e.getMessage(), link);
             document = null;
             statusCode = 415;
+        }
+
+        if (link.equals(site.getUrl()) && statusCode >= 400) {
+            throw new RuntimeException("Сайт вернул HTTP " + statusCode);
         }
 
         if (method == INDEXING_ONE_PAGE) {

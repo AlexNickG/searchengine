@@ -51,7 +51,7 @@ connection-settings:
   #userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 YaBrowser/24.12.0.0 Safari/537.36
   userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
   #referrer: https://dombulgakova.ru/
-  timeout: 50 # задержка между запросами (мс) — вежливость к серверу
+  timeout: 500 # задержка между запросами (мс) — вежливость к серверу
   connectionTimeout: 20000  # таймаут чтения JSoup (мс) — для медленных страниц
 
 exceptions:

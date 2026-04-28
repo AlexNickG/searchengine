@@ -157,6 +157,18 @@
                     <div id="site-form-error" style="color:#c0392b;font-size:13px;margin-top:8px;display:none;"></div>
                   </div>
                 </div>
+
+                <div id="timeout-config-section" style="margin-top:28px;">
+                  <h3 style="margin-bottom:12px;">Настройки подключения</h3>
+                  <div style="background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;padding:16px;max-width:400px;">
+                    <div class="form-group form-group_row" style="align-items:center;gap:12px;">
+                      <label for="timeout-input" style="font-size:14px;white-space:nowrap;min-width:160px;">Задержка (мс):</label>
+                      <input class="form-input" id="timeout-input" type="number" min="0" style="width:120px;"/>
+                      <button class="btn btn_primary" id="timeout-save-btn" type="button">Сохранить</button>
+                    </div>
+                    <div id="timeout-msg" style="font-size:13px;margin-top:8px;display:none;"></div>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="Tabs-block" id="search">
@@ -304,10 +316,46 @@
     // Load sites when Management tab becomes active
     $('a[href="#management"]').on('click', function () {
       loadSites();
+      loadTimeout();
     });
     // Also load on page ready if management tab is active
     $(function () {
-      if (window.location.hash === '#management') loadSites();
+      if (window.location.hash === '#management') {
+        loadSites();
+        loadTimeout();
+      }
     });
+  </script>
+  <script>
+    /* ---- Timeout Setting ---- */
+    var timeoutApi = backendApiUrl + '/admin/settings/timeout';
+
+    function loadTimeout() {
+      $.getJSON(timeoutApi, function (data) {
+        $('#timeout-input').val(data.timeout);
+      });
+    }
+
+    $('#timeout-save-btn').on('click', function () {
+      var val = parseInt($('#timeout-input').val(), 10);
+      if (isNaN(val) || val < 0) {
+        showTimeoutMsg('Введите корректное значение (>= 0)', false);
+        return;
+      }
+      $.ajax({
+        url: timeoutApi,
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ timeout: val }),
+        success: function () { showTimeoutMsg('Сохранено', true); },
+        error: function () { showTimeoutMsg('Ошибка при сохранении', false); }
+      });
+    });
+
+    function showTimeoutMsg(text, ok) {
+      var el = $('#timeout-msg');
+      el.text(text).css('color', ok ? '#27ae60' : '#c0392b').show();
+      setTimeout(function () { el.hide(); }, 3000);
+    }
   </script>
 </body></html>

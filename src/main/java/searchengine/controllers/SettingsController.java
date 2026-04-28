@@ -14,18 +14,34 @@ public class SettingsController {
 
     private final ConnectionSettings connectionSettings;
 
-    @GetMapping("/timeout")
-    public Map<String, Integer> getTimeout() {
-        return Map.of("timeout", connectionSettings.getTimeout());
+    @GetMapping("/connection")
+    public Map<String, Object> getConnectionSettings() {
+        return Map.of(
+                "timeout",   connectionSettings.getTimeout(),
+                "userAgent", connectionSettings.getUserAgent(),
+                "referrer",  connectionSettings.getReferrer()
+        );
     }
 
-    @PostMapping("/timeout")
-    public ResponseEntity<Map<String, Integer>> setTimeout(@RequestBody Map<String, Integer> body) {
-        Integer value = body.get("timeout");
-        if (value == null || value < 0) {
-            return ResponseEntity.badRequest().build();
+    @PostMapping("/connection")
+    public ResponseEntity<Map<String, Object>> updateConnectionSettings(@RequestBody Map<String, Object> body) {
+        if (body.containsKey("timeout")) {
+            int timeout = (int) body.get("timeout");
+            if (timeout < 0) return ResponseEntity.badRequest().build();
+            connectionSettings.setTimeout(timeout);
         }
-        connectionSettings.setTimeout(value);
-        return ResponseEntity.ok(Map.of("timeout", connectionSettings.getTimeout()));
+        if (body.containsKey("userAgent")) {
+            String ua = (String) body.get("userAgent");
+            if (ua != null && !ua.isBlank()) connectionSettings.setUserAgent(ua.trim());
+        }
+        if (body.containsKey("referrer")) {
+            String ref = (String) body.get("referrer");
+            if (ref != null) connectionSettings.setReferrer(ref.trim());
+        }
+        return ResponseEntity.ok(Map.of(
+                "timeout",   connectionSettings.getTimeout(),
+                "userAgent", connectionSettings.getUserAgent(),
+                "referrer",  connectionSettings.getReferrer()
+        ));
     }
 }

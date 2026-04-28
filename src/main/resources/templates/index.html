@@ -133,7 +133,8 @@
                   <table id="sites-table" style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:14px;">
                     <thead>
                       <tr style="background:#f0f0f0;">
-                        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid #ddd;">URL</th>
+                        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid #ddd;">Базовый URL</th>
+                        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid #ddd;">Начальный URL</th>
                         <th style="text-align:left;padding:8px 10px;border-bottom:1px solid #ddd;">Название</th>
                         <th style="padding:8px 10px;border-bottom:1px solid #ddd;width:100px;"></th>
                       </tr>
@@ -141,11 +142,14 @@
                     <tbody id="sites-tbody"></tbody>
                   </table>
 
-                  <div id="site-form-wrap" style="background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;padding:16px;max-width:560px;">
+                  <div id="site-form-wrap" style="background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;padding:16px;max-width:620px;">
                     <h4 id="site-form-title" style="margin:0 0 12px;font-size:14px;">Добавить сайт</h4>
                     <input type="hidden" id="site-edit-id"/>
                     <div class="form-group form-group_row" style="margin-bottom:10px;">
-                      <input class="form-input" id="site-url-input" type="text" placeholder="https://example.com/" style="flex:2;"/>
+                      <input class="form-input" id="site-url-input" type="text" placeholder="https://example.com  (базовый URL / граница обхода)" style="flex:2;"/>
+                    </div>
+                    <div class="form-group form-group_row" style="margin-bottom:10px;">
+                      <input class="form-input" id="site-starturl-input" type="text" placeholder="Начальный URL (необязательно, если отличается от базового)" style="flex:2;"/>
                     </div>
                     <div class="form-group form-group_row" style="margin-bottom:10px;">
                       <input class="form-input" id="site-name-input" type="text" placeholder="Название сайта" style="flex:2;"/>
@@ -234,16 +238,20 @@
       $.getJSON(sitesApi, function (data) {
         var tbody = $('#sites-tbody').empty();
         if (!data || data.length === 0) {
-          tbody.append('<tr><td colspan="3" style="padding:8px 10px;color:#999;">Сайты не добавлены</td></tr>');
+          tbody.append('<tr><td colspan="4" style="padding:8px 10px;color:#999;">Сайты не добавлены</td></tr>');
           return;
         }
         data.forEach(function (s) {
+          var startCell = s.startUrl
+            ? '<span title="' + $('<span>').text(s.startUrl).html() + '" style="display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + $('<span>').text(s.startUrl).html() + '</span>'
+            : '<span style="color:#aaa;">—</span>';
           tbody.append(
             '<tr data-id="' + s.id + '">' +
               '<td style="padding:7px 10px;border-bottom:1px solid #eee;word-break:break-all;">' + $('<span>').text(s.url).html() + '</td>' +
+              '<td style="padding:7px 10px;border-bottom:1px solid #eee;">' + startCell + '</td>' +
               '<td style="padding:7px 10px;border-bottom:1px solid #eee;">' + $('<span>').text(s.name).html() + '</td>' +
               '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;">' +
-                '<button class="btn btn_primary site-edit-btn" data-id="' + s.id + '" data-url="' + $('<span>').text(s.url).html() + '" data-name="' + $('<span>').text(s.name).html() + '" style="padding:3px 10px;font-size:12px;margin-right:4px;">Изменить</button>' +
+                '<button class="btn btn_primary site-edit-btn" data-id="' + s.id + '" data-url="' + $('<span>').text(s.url).html() + '" data-starturl="' + $('<span>').text(s.startUrl || '').html() + '" data-name="' + $('<span>').text(s.name).html() + '" style="padding:3px 10px;font-size:12px;margin-right:4px;">Изменить</button>' +
                 '<button class="btn site-del-btn" data-id="' + s.id + '" style="padding:3px 10px;font-size:12px;background:#e74c3c;color:#fff;border-color:#e74c3c;">Удалить</button>' +
               '</td>' +
             '</tr>'
@@ -255,6 +263,7 @@
     function resetSiteForm() {
       $('#site-edit-id').val('');
       $('#site-url-input').val('');
+      $('#site-starturl-input').val('');
       $('#site-name-input').val('');
       $('#site-form-title').text('Добавить сайт');
       $('#site-cancel-btn').hide();
@@ -265,6 +274,7 @@
       var $btn = $(this);
       $('#site-edit-id').val($btn.data('id'));
       $('#site-url-input').val($btn.data('url'));
+      $('#site-starturl-input').val($btn.data('starturl'));
       $('#site-name-input').val($btn.data('name'));
       $('#site-form-title').text('Изменить сайт');
       $('#site-cancel-btn').show();
@@ -286,10 +296,11 @@
     $('#site-cancel-btn').on('click', resetSiteForm);
 
     $('#site-save-btn').on('click', function () {
-      var id  = $('#site-edit-id').val();
-      var url = $.trim($('#site-url-input').val());
-      var name = $.trim($('#site-name-input').val());
-      var $err = $('#site-form-error');
+      var id       = $('#site-edit-id').val();
+      var url      = $.trim($('#site-url-input').val());
+      var startUrl = $.trim($('#site-starturl-input').val());
+      var name     = $.trim($('#site-name-input').val());
+      var $err     = $('#site-form-error');
 
       if (!url || !name) {
         $err.text('Заполните URL и название').show();
@@ -299,15 +310,21 @@
         $err.text('URL должен начинаться с http:// или https://').show();
         return;
       }
+      if (startUrl && !/^https?:\/\/.+/.test(startUrl)) {
+        $err.text('Начальный URL должен начинаться с http:// или https://').show();
+        return;
+      }
 
       var method = id ? 'PUT' : 'POST';
       var endpoint = id ? sitesApi + '/' + id : sitesApi;
+      var payload = { url: url, name: name };
+      if (startUrl) payload.startUrl = startUrl;
 
       $.ajax({
         url: endpoint,
         type: method,
         contentType: 'application/json',
-        data: JSON.stringify({ url: url, name: name }),
+        data: JSON.stringify(payload),
         success: function () {
           resetSiteForm();
           loadSites();

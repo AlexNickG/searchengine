@@ -97,26 +97,29 @@ public class IndexingServiceImpl implements IndexingService {
 
     public class StartIndexing implements Runnable {
         private final Site site = new Site();
-        private final String link;
+        private final String baseUrl;
+        private final String startLink;
         private final String siteName;
 
         public StartIndexing(searchengine.config.Site configSite) {
-            this.link = configSite.getUrl();
+            this.baseUrl = configSite.getUrl();
+            String su = configSite.getStartUrl();
+            this.startLink = (su != null && !su.isBlank()) ? su : baseUrl;
             this.siteName = configSite.getName();
         }
 
         @Override
         public void run() {
-            Site existing = siteRepository.findByUrl(link);
+            Site existing = siteRepository.findByUrl(baseUrl);
             if (existing != null) {
                 pageProcessorService.clearSite(existing.getId());
             }
-            site.setUrl(link);
+            site.setUrl(baseUrl);
             site.setName(siteName);
             setSiteStatus(site, Status.INDEXING, "");
 
             try {
-                new ForkJoinPool().invoke(new IndexingTask(link, site));
+                new ForkJoinPool().invoke(new IndexingTask(startLink, site));
                 setSiteStatus(site, Status.INDEXED, "");
             } catch (CancellationException e) {
                 setSiteStatus(site, Status.FAILED, "Индексация остановлена пользователем");

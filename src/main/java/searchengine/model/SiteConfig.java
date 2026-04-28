@@ -16,9 +16,12 @@ public class SiteConfig {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 512)
+    @Column(nullable = false, unique = true, columnDefinition = "TEXT")
     private String url;
 
     @Column(nullable = false, length = 255)
     private String name;
+
+    @Column(columnDefinition = "TEXT")
+    private String startUrl;
 }

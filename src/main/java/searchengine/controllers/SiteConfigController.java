@@ -58,6 +58,7 @@ public class SiteConfigController {
                     Site s = new Site();
                     s.setUrl(sc.getUrl());
                     s.setName(sc.getName());
+                    s.setStartUrl(sc.getStartUrl());
                     return s;
                 })
                 .toList();

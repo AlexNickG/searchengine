@@ -4,9 +4,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import searchengine.Repositories.SiteConfigRepository;
+import searchengine.Repositories.SiteRepository;
 import searchengine.config.Site;
 import searchengine.config.SitesList;
 import searchengine.model.SiteConfig;
+import searchengine.services.PageProcessorService;
 
 import java.util.List;
 
@@ -17,6 +19,8 @@ public class SiteConfigController {
 
     private final SiteConfigRepository siteConfigRepository;
     private final SitesList sitesList;
+    private final SiteRepository siteRepository;
+    private final PageProcessorService pageProcessorService;
 
     @GetMapping
     public List<SiteConfig> getAll() {
@@ -49,6 +53,19 @@ public class SiteConfigController {
         }
         siteConfigRepository.deleteById(id);
         syncToSitesList();
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/data")
+    public ResponseEntity<Void> deleteSiteData(@RequestParam String url) {
+        searchengine.model.Site site = siteRepository.findByUrl(url);
+        if (site != null) {
+            pageProcessorService.clearSite(site.getId());
+        }
+        siteConfigRepository.findByUrl(url).ifPresent(sc -> {
+            siteConfigRepository.deleteById(sc.getId());
+            syncToSitesList();
+        });
         return ResponseEntity.noContent().build();
     }
 

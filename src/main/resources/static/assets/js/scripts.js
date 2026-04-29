@@ -1631,6 +1631,26 @@ var API = function(){
                         var $thisHideBlock = $statistics.find('.HideBlock').last();
                         $thisHideBlock.on('click', HideBlock().trigger);
 
+                        if ($('#isAdmin').length) {
+                            var $delBtn = $('<button type="button" style="margin-top:12px;padding:4px 14px;font-size:12px;background:#e74c3c;color:#fff;border:1px solid #c0392b;border-radius:4px;cursor:pointer;">Удалить сайт</button>');
+                            (function(siteUrl, siteName) {
+                                $delBtn.on('click', function(e) {
+                                    e.stopPropagation();
+                                    if (!confirm('Удалить сайт «' + siteName + '» и все его данные из БД?')) return;
+                                    var csrf = $('meta[name="_csrf"]').attr('content');
+                                    var csrfHeader = $('meta[name="_csrf_header"]').attr('content');
+                                    $.ajax({
+                                        url: '/api/admin/sites/data?url=' + encodeURIComponent(siteUrl),
+                                        type: 'DELETE',
+                                        beforeSend: function(xhr) { xhr.setRequestHeader(csrfHeader, csrf); },
+                                        success: function() { location.reload(); },
+                                        error: function() { alert('Ошибка при удалении сайта'); }
+                                    });
+                                });
+                            })(site.url, site.name);
+                            $thisHideBlock.find('.Statistics-description').append($delBtn);
+                        }
+
 
                         $('.Tabs_column > .Tabs-wrap > .Tabs-block').each(function(){
                             var $this = $(this);

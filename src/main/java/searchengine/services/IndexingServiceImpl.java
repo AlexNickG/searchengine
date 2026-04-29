@@ -166,8 +166,9 @@ public class IndexingServiceImpl implements IndexingService {
             Document document = connectToPageAndSaveIt(link, site, INDEXING_WHOLE_SITE);
             if (document == null) return;
 
-            // Normalise protocol so http:// and https:// are treated the same
-            String siteUrlNorm = site.getUrl().replaceFirst("^https?://", "");
+            // Boundary: strip protocol and query string — links must share scheme+host+path prefix
+            String rawBase = site.getUrl().replaceFirst("^https?://", "");
+            String siteUrlNorm = rawBase.contains("?") ? rawBase.substring(0, rawBase.indexOf('?')) : rawBase;
             List<String> fileExts = config.getFileExtensions() != null ? config.getFileExtensions() : List.of();
             List<String> pathParts = config.getPathContaining() != null ? config.getPathContaining() : List.of();
 
@@ -253,7 +254,9 @@ public class IndexingServiceImpl implements IndexingService {
         String content = "";
         String path;
         try {
-            path = new URL(link).getPath();
+            URL parsedUrl = new URL(link);
+            String query = parsedUrl.getQuery();
+            path = parsedUrl.getPath() + (query != null && !query.isEmpty() ? "?" + query : "");
         } catch (MalformedURLException e) {
             return null;
         }

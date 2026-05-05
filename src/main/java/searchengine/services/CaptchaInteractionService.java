@@ -85,24 +85,36 @@ public class CaptchaInteractionService {
         return currentChallenge;
     }
 
-    private CaptchaChallenge extractChallenge(String pageUrl, Document page, Map<String, String> sessionCookies) {
+    private CaptchaChallenge extractChallenge(String requestUrl, Document page, Map<String, String> sessionCookies) {
+        // Берём реальный URL страницы после редиректов (JSoup заполняет его при fetch)
+        String actualPageUrl = page.location();
+        if (actualPageUrl == null || actualPageUrl.isEmpty()) actualPageUrl = requestUrl;
+
         CaptchaChallenge challenge = new CaptchaChallenge();
         challenge.setId(UUID.randomUUID().toString());
-        challenge.setPageUrl(pageUrl);
+        challenge.setPageUrl(actualPageUrl);
 
         Element captchaImg = page.selectFirst("img[src*=captcha], img[src*=code], img[src*=verify], img[src*=check]");
         if (captchaImg == null) captchaImg = page.selectFirst("form img");
         if (captchaImg != null) {
-            String imgSrc = captchaImg.absUrl("src");
-            if (!imgSrc.isEmpty()) {
-                challenge.setImageBase64(downloadImageAsBase64(imgSrc, pageUrl, sessionCookies));
+            String imgSrc = resolveUrl(captchaImg.absUrl("src"), captchaImg.attr("src"), actualPageUrl);
+            if (imgSrc != null) {
+                log.info("Downloading CAPTCHA image from: {}", imgSrc);
+                challenge.setImageBase64(downloadImageAsBase64(imgSrc, actualPageUrl, sessionCookies));
+                if (challenge.getImageBase64() == null) {
+                    log.warn("Failed to download CAPTCHA image, falling back to URL-only modal");
+                }
+            } else {
+                log.warn("Could not determine CAPTCHA image URL, img element: {}", captchaImg.outerHtml());
             }
+        } else {
+            log.warn("No CAPTCHA image element found on page: {}", actualPageUrl);
         }
 
         Element form = page.selectFirst("form");
         if (form != null) {
-            String action = form.absUrl("action");
-            challenge.setFormAction(action.isEmpty() ? pageUrl : action);
+            String action = resolveUrl(form.absUrl("action"), form.attr("action"), actualPageUrl);
+            challenge.setFormAction(action != null ? action : actualPageUrl);
 
             Map<String, String> hiddenFields = new HashMap<>();
             form.select("input[type=hidden]").forEach(input -> {
@@ -120,6 +132,20 @@ public class CaptchaInteractionService {
         }
 
         return challenge;
+    }
+
+    /** Возвращает абсолютный URL: сначала пробует absUrl, затем вручную склеивает с базовым. */
+    private String resolveUrl(String absUrl, String rawAttr, String baseUrl) {
+        if (absUrl != null && !absUrl.isEmpty()) return absUrl;
+        if (rawAttr == null || rawAttr.isEmpty()) return null;
+        if (rawAttr.startsWith("http://") || rawAttr.startsWith("https://")) return rawAttr;
+        if (rawAttr.startsWith("//")) return "https:" + rawAttr;
+        try {
+            return new java.net.URL(new java.net.URL(baseUrl), rawAttr).toString();
+        } catch (Exception e) {
+            log.warn("Cannot resolve URL '{}' against base '{}': {}", rawAttr, baseUrl, e.getMessage());
+            return null;
+        }
     }
 
     private String downloadImageAsBase64(String imgUrl, String referrer, Map<String, String> cookies) {

@@ -30,13 +30,26 @@ public class CaptchaInteractionService {
 
     public record SolvedChallenge(CaptchaChallenge challenge, String solution) {}
 
-    public SolvedChallenge awaitSolution(String url, Document captchaPage) {
+    /**
+     * Ждёт решения CAPTCHA от оператора.
+     * Возвращает SolvedChallenge с challenge!=null — мы решили сами, нужно отправить форму.
+     * Возвращает SolvedChallenge с challenge==null — другая задача решила, просто повторить запрос.
+     * Возвращает null — таймаут или прерывание, пропустить страницу.
+     */
+    public SolvedChallenge awaitSolution(String url, Document captchaPage, Map<String, String> sessionCookies) {
         if (!semaphore.tryAcquire()) {
-            log.warn("Another CAPTCHA already pending, skipping: {}", url);
-            return null;
+            // Другая задача уже решает CAPTCHA — ждём завершения и повторяем с новыми cookies
+            log.info("CAPTCHA resolution in progress, waiting before retry: {}", url);
+            try {
+                boolean acquired = semaphore.tryAcquire(6, TimeUnit.MINUTES);
+                if (acquired) semaphore.release();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return new SolvedChallenge(null, null);
         }
         try {
-            CaptchaChallenge challenge = extractChallenge(url, captchaPage);
+            CaptchaChallenge challenge = extractChallenge(url, captchaPage, sessionCookies);
             CompletableFuture<String> future = new CompletableFuture<>();
             pending.put(challenge.getId(), future);
             currentChallenge = challenge;
@@ -72,7 +85,7 @@ public class CaptchaInteractionService {
         return currentChallenge;
     }
 
-    private CaptchaChallenge extractChallenge(String pageUrl, Document page) {
+    private CaptchaChallenge extractChallenge(String pageUrl, Document page, Map<String, String> sessionCookies) {
         CaptchaChallenge challenge = new CaptchaChallenge();
         challenge.setId(UUID.randomUUID().toString());
         challenge.setPageUrl(pageUrl);
@@ -82,7 +95,7 @@ public class CaptchaInteractionService {
         if (captchaImg != null) {
             String imgSrc = captchaImg.absUrl("src");
             if (!imgSrc.isEmpty()) {
-                challenge.setImageBase64(downloadImageAsBase64(imgSrc, pageUrl));
+                challenge.setImageBase64(downloadImageAsBase64(imgSrc, pageUrl, sessionCookies));
             }
         }
 
@@ -109,15 +122,23 @@ public class CaptchaInteractionService {
         return challenge;
     }
 
-    private String downloadImageAsBase64(String imgUrl, String referrer) {
+    private String downloadImageAsBase64(String imgUrl, String referrer, Map<String, String> cookies) {
         try {
-            Connection.Response response = Jsoup.connect(imgUrl)
+            Connection conn = Jsoup.connect(imgUrl)
                     .referrer(referrer)
                     .userAgent(connectionSettings.getUserAgent())
                     .ignoreContentType(true)
-                    .timeout(10_000)
-                    .execute();
+                    .ignoreHttpErrors(true)
+                    .timeout(10_000);
+            if (cookies != null && !cookies.isEmpty()) {
+                conn.cookies(cookies);
+            }
+            Connection.Response response = conn.execute();
             byte[] bytes = response.bodyAsBytes();
+            if (bytes == null || bytes.length == 0) {
+                log.warn("CAPTCHA image is empty at {}", imgUrl);
+                return null;
+            }
             String contentType = response.contentType();
             if (contentType == null || contentType.isEmpty()) contentType = "image/png";
             String mimeType = contentType.split(";")[0].trim();

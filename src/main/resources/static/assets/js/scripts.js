@@ -2013,10 +2013,17 @@ function startCaptchaPolling() {
                             captchaCurrentId = challenge.id;
                             if (challenge.imageBase64) {
                                 $('#captchaImg').attr('src', challenge.imageBase64).show();
+                                $('#captchaUrl').text(challenge.pageUrl || '');
                             } else {
                                 $('#captchaImg').hide();
+                                $('#captchaUrl').html(
+                                    'Не удалось загрузить картинку автоматически. ' +
+                                    'Откройте страницу, введите капчу и вернитесь сюда:<br>' +
+                                    '<a href="' + (challenge.pageUrl || '#') + '" target="_blank" ' +
+                                    'style="color:#3498db;word-break:break-all;">' +
+                                    (challenge.pageUrl || '') + '</a>'
+                                );
                             }
-                            $('#captchaUrl').text(challenge.pageUrl || '');
                             $('#captchaInput').val('');
                             $('#captchaModal').css('display', 'flex');
                             $('#captchaInput').focus();

@@ -264,15 +264,23 @@ public class IndexingServiceImpl implements IndexingService {
             FetchResult result = fetchWithRetry(link, site);
             if (result == null) return null;
 
-            if (result.blockType() == CaptchaDetector.BlockType.CAPTCHA_IMAGE && captchaRound == 0) {
-                log.info("CAPTCHA detected at {}, requesting operator input", link);
-                CaptchaInteractionService.SolvedChallenge solved =
-                        captchaInteractionService.awaitSolution(link, result.document());
-                if (solved != null) {
-                    submitCaptchaForm(site, solved.challenge(), solved.solution());
+            if (result.blockType() == CaptchaDetector.BlockType.CAPTCHA_IMAGE) {
+                if (captchaRound == 0) {
+                    log.info("CAPTCHA detected at {}, requesting operator input", link);
+                    Map<String, String> cookies = new HashMap<>(siteCookies.getOrDefault(site.getUrl(), Map.of()));
+                    CaptchaInteractionService.SolvedChallenge solved =
+                            captchaInteractionService.awaitSolution(link, result.document(), cookies);
+                    if (solved == null) return null; // таймаут — пропускаем страницу
+                    if (solved.challenge() != null) {
+                        submitCaptchaForm(site, solved.challenge(), solved.solution()); // решили сами
+                    }
+                    // solved.challenge()==null: другая задача решила — просто повторяем с новыми cookies
                     continue;
+                } else {
+                    // CAPTCHA повторилась после решения — пропускаем, не сохраняем мусор в БД
+                    log.warn("CAPTCHA persists after solving attempt, skipping: {}", link);
+                    return null;
                 }
-                return null;
             }
 
             if (result.blockType() == CaptchaDetector.BlockType.BLOCKED) {

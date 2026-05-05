@@ -15,6 +15,7 @@ import searchengine.Repositories.SiteRepository;
 import searchengine.config.Config;
 import searchengine.config.ConnectionSettings;
 import searchengine.config.SitesList;
+import searchengine.dto.captcha.CaptchaChallenge;
 import searchengine.dto.statistics.ResponseMessage;
 import searchengine.exceptions.BadRequestException;
 import searchengine.exceptions.ResourceDoesNotMatchException;
@@ -49,13 +50,18 @@ public class IndexingServiceImpl implements IndexingService {
     private final LemmaFinder lemmaFinder;
     private final PageProcessorService pageProcessorService;
     private final Config config;
+    private final CaptchaDetector captchaDetector;
+    private final ProxyRotator proxyRotator;
+    private final CaptchaInteractionService captchaInteractionService;
 
     public static ConcurrentSkipListSet<String> globalLinksSet = new ConcurrentSkipListSet<>();
     public static final int INDEXING_WHOLE_SITE = 0;
     public static final int INDEXING_ONE_PAGE = 1;
     public static volatile boolean stop;
 
-    private int connectionTimeout = 15_000; // JSoup read/connect timeout, ms
+    private static final ConcurrentHashMap<String, Map<String, String>> siteCookies = new ConcurrentHashMap<>();
+
+    private int connectionTimeout = 15_000;
     private long start;
     private long start2;
 
@@ -114,12 +120,15 @@ public class IndexingServiceImpl implements IndexingService {
             if (existing != null) {
                 pageProcessorService.clearSite(existing.getId());
             }
+            siteCookies.remove(baseUrl);
             site.setUrl(baseUrl);
             site.setName(siteName);
             setSiteStatus(site, Status.INDEXING, "");
 
+            int concurrency = connectionSettings.getMaxConcurrentRequests() > 0
+                    ? connectionSettings.getMaxConcurrentRequests() : 4;
             try {
-                new ForkJoinPool().invoke(new IndexingTask(startLink, site));
+                new ForkJoinPool(concurrency).invoke(new IndexingTask(startLink, site));
                 setSiteStatus(site, Status.INDEXED, "");
             } catch (CancellationException e) {
                 setSiteStatus(site, Status.FAILED, "Индексация остановлена пользователем");
@@ -166,7 +175,6 @@ public class IndexingServiceImpl implements IndexingService {
             Document document = connectToPageAndSaveIt(link, site, INDEXING_WHOLE_SITE);
             if (document == null) return;
 
-            // Boundary: strip protocol and query string — links must share scheme+host+path prefix
             String rawBase = site.getUrl().replaceFirst("^https?://", "");
             String siteUrlNorm = rawBase.contains("?") ? rawBase.substring(0, rawBase.indexOf('?')) : rawBase;
             List<String> fileExts = config.getFileExtensions() != null ? config.getFileExtensions() : List.of();
@@ -175,7 +183,6 @@ public class IndexingServiceImpl implements IndexingService {
             List<String> allHrefs = document.select("a").stream()
                     .map(e -> e.attr("abs:href"))
                     .filter(e -> !e.isBlank())
-                    // Strip fragment (#...) — server never sees it, avoids duplicate crawls
                     .map(e -> e.contains("#") ? e.substring(0, e.indexOf('#')) : e)
                     .filter(e -> !e.isBlank())
                     .distinct()
@@ -192,7 +199,6 @@ public class IndexingServiceImpl implements IndexingService {
                 return;
             }
 
-            // Atomic: add to set returns false if already present — removes duplicates without race condition
             linksSet.removeIf(url -> !IndexingServiceImpl.globalLinksSet.add(url));
 
             linksSet.forEach(subLink -> subTaskList.add(new IndexingTask(subLink, site)));
@@ -236,22 +242,15 @@ public class IndexingServiceImpl implements IndexingService {
     }
 
     public Document connectToPageAndSaveIt(String link, Site site, int method) throws RuntimeException {
+        int delayMin = connectionSettings.getDelayMin() > 0 ? connectionSettings.getDelayMin() : connectionSettings.getTimeout();
+        int delayMax = Math.max(connectionSettings.getDelayMax(), delayMin + 1);
+        int delay = delayMin + ThreadLocalRandom.current().nextInt(delayMax - delayMin);
         try {
-            Thread.sleep(connectionSettings.getTimeout());
+            Thread.sleep(delay);
         } catch (InterruptedException e) {
             throw new CancellationException("Индексация остановлена пользователем");
         }
 
-        Connection connection = Jsoup.connect(link)
-                .ignoreHttpErrors(true)
-                .followRedirects(true)
-                .userAgent(connectionSettings.getUserAgent())
-                .referrer(connectionSettings.getReferrer())
-                .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
-                .timeout(connectionTimeout);
-
-        Document document;
-        String content = "";
         String path;
         try {
             URL parsedUrl = new URL(link);
@@ -261,36 +260,144 @@ public class IndexingServiceImpl implements IndexingService {
             return null;
         }
 
-        Page page = new Page();
-        int statusCode;
+        for (int captchaRound = 0; captchaRound < 2; captchaRound++) {
+            FetchResult result = fetchWithRetry(link, site);
+            if (result == null) return null;
 
-        try {
-            document = connection.get();
-            content = document.toString();
-            statusCode = connection.response().statusCode();
-        } catch (IOException e) {
-            if (link.equals(site.getUrl())) {
-                throw new RuntimeException("Не удалось подключиться к сайту: " + e.getMessage());
+            if (result.blockType() == CaptchaDetector.BlockType.CAPTCHA_IMAGE && captchaRound == 0) {
+                log.info("CAPTCHA detected at {}, requesting operator input", link);
+                CaptchaInteractionService.SolvedChallenge solved =
+                        captchaInteractionService.awaitSolution(link, result.document());
+                if (solved != null) {
+                    submitCaptchaForm(site, solved.challenge(), solved.solution());
+                    continue;
+                }
+                return null;
             }
-            log.error("Страница недоступна: {} {}", e.getMessage(), link);
-            document = null;
-            statusCode = 404;
-        } catch (UnknownContentTypeException e) {
-            log.error("Неподдерживаемый контент: {} {}", e.getMessage(), link);
-            document = null;
-            statusCode = 415;
-        }
 
-        if (link.equals(site.getUrl()) && statusCode >= 400) {
-            throw new RuntimeException("Сайт вернул HTTP " + statusCode);
-        }
+            if (result.blockType() == CaptchaDetector.BlockType.BLOCKED) {
+                log.warn("Access blocked (403): {}", link);
+                return null;
+            }
 
-        if (method == INDEXING_ONE_PAGE) {
-            page = pageProcessorService.updatePage(path, site.getId());
+            if (link.equals(site.getUrl()) && result.statusCode() >= 400) {
+                throw new RuntimeException("Сайт вернул HTTP " + result.statusCode());
+            }
+
+            Page page = new Page();
+            if (method == INDEXING_ONE_PAGE) {
+                page = pageProcessorService.updatePage(path, site.getId());
+            }
+            lemmaFinder.collectLemmas(
+                    pageRepository.save(fillThePage(page, path, site, result.content(), result.statusCode())).getId());
+            setSiteStatus(site);
+            return result.document();
         }
-        lemmaFinder.collectLemmas(pageRepository.save(fillThePage(page, path, site, content, statusCode)).getId());
-        setSiteStatus(site);
-        return document;
+        return null;
+    }
+
+    private record FetchResult(Document document, int statusCode, String content, CaptchaDetector.BlockType blockType) {}
+
+    private FetchResult fetchWithRetry(String link, Site site) {
+        int maxRetries = 3;
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            if (attempt > 0) {
+                try {
+                    Thread.sleep(5_000L * (1L << (attempt - 1)));
+                } catch (InterruptedException e) {
+                    throw new CancellationException("Индексация остановлена пользователем");
+                }
+            }
+
+            List<String> agents = connectionSettings.getUserAgents();
+            String userAgent = (agents != null && !agents.isEmpty())
+                    ? agents.get(ThreadLocalRandom.current().nextInt(agents.size()))
+                    : connectionSettings.getUserAgent();
+
+            ConnectionSettings.ProxyEntry proxy = proxyRotator.next();
+
+            Connection connection = Jsoup.connect(link)
+                    .ignoreHttpErrors(true)
+                    .followRedirects(true)
+                    .userAgent(userAgent)
+                    .referrer(connectionSettings.getReferrer())
+                    .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
+                    .timeout(connectionTimeout)
+                    .cookies(new HashMap<>(siteCookies.getOrDefault(site.getUrl(), Map.of())));
+            if (proxy != null) connection.proxy(proxy.getHost(), proxy.getPort());
+
+            Document document = null;
+            String content = "";
+            int statusCode;
+
+            try {
+                document = connection.get();
+                content = document.toString();
+                statusCode = connection.response().statusCode();
+                Map<String, String> responseCookies = connection.response().cookies();
+                if (!responseCookies.isEmpty()) {
+                    siteCookies.compute(site.getUrl(), (k, existing) -> {
+                        Map<String, String> merged = existing != null ? new HashMap<>(existing) : new HashMap<>();
+                        merged.putAll(responseCookies);
+                        return merged;
+                    });
+                }
+            } catch (IOException e) {
+                if (link.equals(site.getUrl())) {
+                    throw new RuntimeException("Не удалось подключиться к сайту: " + e.getMessage());
+                }
+                if (proxy != null) proxyRotator.markFailed(proxy);
+                log.error("Страница недоступна: {} {}", e.getMessage(), link);
+                statusCode = 404;
+            } catch (UnknownContentTypeException e) {
+                log.error("Неподдерживаемый контент: {} {}", e.getMessage(), link);
+                statusCode = 415;
+            }
+
+            CaptchaDetector.BlockType blockType = captchaDetector.detect(statusCode, content);
+
+            if (blockType == CaptchaDetector.BlockType.RATE_LIMIT
+                    || blockType == CaptchaDetector.BlockType.CLOUDFLARE) {
+                log.warn("Rate limited ({}) attempt {}/{}: {}", blockType, attempt + 1, maxRetries, link);
+                if (proxy != null) proxyRotator.markFailed(proxy);
+                continue;
+            }
+
+            return new FetchResult(document, statusCode, content, blockType);
+        }
+        log.warn("All {} retry attempts exhausted for: {}", maxRetries, link);
+        return null;
+    }
+
+    private void submitCaptchaForm(Site site, CaptchaChallenge challenge, String solution) {
+        if (challenge.getFormAction() == null || challenge.getCaptchaFieldName() == null) return;
+        try {
+            Map<String, String> formData = new HashMap<>();
+            if (challenge.getHiddenFields() != null) formData.putAll(challenge.getHiddenFields());
+            formData.put(challenge.getCaptchaFieldName(), solution);
+
+            Connection.Response response = Jsoup.connect(challenge.getFormAction())
+                    .data(formData)
+                    .userAgent(connectionSettings.getUserAgent())
+                    .referrer(challenge.getPageUrl())
+                    .cookies(new HashMap<>(siteCookies.getOrDefault(site.getUrl(), Map.of())))
+                    .method(Connection.Method.POST)
+                    .timeout(connectionTimeout)
+                    .ignoreHttpErrors(true)
+                    .execute();
+
+            Map<String, String> newCookies = response.cookies();
+            if (!newCookies.isEmpty()) {
+                siteCookies.compute(site.getUrl(), (k, existing) -> {
+                    Map<String, String> merged = existing != null ? new HashMap<>(existing) : new HashMap<>();
+                    merged.putAll(newCookies);
+                    return merged;
+                });
+                log.info("CAPTCHA form submitted, {} new cookies received", newCookies.size());
+            }
+        } catch (IOException e) {
+            log.warn("Failed to submit CAPTCHA form: {}", e.getMessage());
+        }
     }
 
     public ResponseMessage sendResponse(boolean result, String message) {

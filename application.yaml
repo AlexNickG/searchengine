@@ -48,11 +48,19 @@ indexing-settings:
   clearDb: true
 
 connection-settings:
-  #userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 YaBrowser/24.12.0.0 Safari/537.36
   userAgent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
   referrer: https://google.com/
-  timeout: 500 # задержка между запросами (мс) — вежливость к серверу
-  connectionTimeout: 20000  # таймаут чтения JSoup (мс) — для медленных страниц
+  timeout: 500 # оставлен для обратной совместимости
+  connectionTimeout: 20000  # таймаут чтения JSoup (мс)
+  delayMin: 800             # мин. задержка между запросами (мс)
+  delayMax: 3000            # макс. задержка между запросами (мс)
+  maxConcurrentRequests: 4  # максимальный параллелизм краулера
+  userAgents:
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
+    - "Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0"
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0"
+  proxies: []               # список прокси: [{host: proxy.example.com, port: 8080}]
 
 exceptions:
   lemmaExceptions[0]: СОЮЗ

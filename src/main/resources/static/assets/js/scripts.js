@@ -1965,9 +1965,101 @@ var Tabs = function(){
     };
 };
 Tabs().init();
-// setTimeout(function(){
-//     $('body').css('opacity', '1');
-// }, 100);
+
+// ---- Полуавтоматическое решение CAPTCHA ----
+var captchaCurrentId = null;
+var captchaPollTimer = null;
+var captchaAudioCtx = null;
+
+function captchaBeep() {
+    try {
+        if (!captchaAudioCtx) {
+            captchaAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (captchaAudioCtx.state === 'suspended') captchaAudioCtx.resume();
+        var osc = captchaAudioCtx.createOscillator();
+        var gain = captchaAudioCtx.createGain();
+        osc.connect(gain); gain.connect(captchaAudioCtx.destination);
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.6, captchaAudioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, captchaAudioCtx.currentTime + 0.7);
+        osc.start(captchaAudioCtx.currentTime);
+        osc.stop(captchaAudioCtx.currentTime + 0.7);
+        // Second beep
+        setTimeout(function() {
+            var o2 = captchaAudioCtx.createOscillator();
+            var g2 = captchaAudioCtx.createGain();
+            o2.connect(g2); g2.connect(captchaAudioCtx.destination);
+            o2.frequency.value = 1100;
+            g2.gain.setValueAtTime(0.6, captchaAudioCtx.currentTime);
+            g2.gain.exponentialRampToValueAtTime(0.001, captchaAudioCtx.currentTime + 0.7);
+            o2.start(captchaAudioCtx.currentTime);
+            o2.stop(captchaAudioCtx.currentTime + 0.7);
+        }, 300);
+    } catch (e) { /* audio unavailable */ }
+}
+
+function startCaptchaPolling() {
+    if (captchaPollTimer) return;
+    captchaPollTimer = setInterval(function() {
+        $.ajax({
+            url: backendApiUrl + '/captchaPending',
+            type: 'GET',
+            complete: function(xhr) {
+                if (xhr.status === 200 && xhr.responseText) {
+                    try {
+                        var challenge = JSON.parse(xhr.responseText);
+                        if (challenge && challenge.id && challenge.id !== captchaCurrentId) {
+                            captchaCurrentId = challenge.id;
+                            if (challenge.imageBase64) {
+                                $('#captchaImg').attr('src', challenge.imageBase64).show();
+                            } else {
+                                $('#captchaImg').hide();
+                            }
+                            $('#captchaUrl').text(challenge.pageUrl || '');
+                            $('#captchaInput').val('');
+                            $('#captchaModal').css('display', 'flex');
+                            $('#captchaInput').focus();
+                            captchaBeep();
+                            document.title = '[CAPTCHA] ' + document.title.replace('[CAPTCHA] ', '');
+                        }
+                    } catch (e) { /* ignore parse errors */ }
+                } else if (xhr.status === 204 && captchaCurrentId) {
+                    captchaCurrentId = null;
+                    $('#captchaModal').hide();
+                    document.title = document.title.replace('[CAPTCHA] ', '');
+                }
+            }
+        });
+    }, 3000);
+}
+
+function stopCaptchaPolling() {
+    if (captchaPollTimer) {
+        clearInterval(captchaPollTimer);
+        captchaPollTimer = null;
+    }
+}
+
+$('#captchaSubmit').on('click', function() {
+    var solution = $('#captchaInput').val().trim();
+    if (!solution || !captchaCurrentId) return;
+    var idToSolve = captchaCurrentId;
+    $.post(backendApiUrl + '/solveCaptcha', { id: idToSolve, solution: solution })
+        .done(function() {
+            captchaCurrentId = null;
+            $('#captchaModal').hide();
+            document.title = document.title.replace('[CAPTCHA] ', '');
+        });
+});
+
+$('#captchaInput').on('keypress', function(e) {
+    if (e.which === 13) $('#captchaSubmit').trigger('click');
+});
+
+// Запускаем polling сразу — он безвреден при отсутствии капчи (сервер возвращает 204)
+startCaptchaPolling();
+
 });
 
 

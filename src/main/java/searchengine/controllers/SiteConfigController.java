@@ -62,10 +62,6 @@ public class SiteConfigController {
         if (site != null) {
             pageProcessorService.clearSite(site.getId());
         }
-        siteConfigRepository.findByUrl(url).ifPresent(sc -> {
-            siteConfigRepository.deleteById(sc.getId());
-            syncToSitesList();
-        });
         return ResponseEntity.noContent().build();
     }
 

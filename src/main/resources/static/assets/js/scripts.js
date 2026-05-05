@@ -1632,11 +1632,11 @@ var API = function(){
                         $thisHideBlock.on('click', HideBlock().trigger);
 
                         if ($('#isAdmin').length) {
-                            var $delBtn = $('<button type="button" style="margin-top:12px;padding:4px 14px;font-size:12px;background:#e74c3c;color:#fff;border:1px solid #c0392b;border-radius:4px;cursor:pointer;">Удалить сайт</button>');
+                            var $delBtn = $('<button type="button" style="margin-top:12px;padding:4px 14px;font-size:12px;background:#e74c3c;color:#fff;border:1px solid #c0392b;border-radius:4px;cursor:pointer;">Очистить данные</button>');
                             (function(siteUrl, siteName) {
                                 $delBtn.on('click', function(e) {
                                     e.stopPropagation();
-                                    if (!confirm('Удалить сайт «' + siteName + '» и все его данные из БД?')) return;
+                                    if (!confirm('Очистить все проиндексированные данные сайта «' + siteName + '»?\nСайт останется в списке и будет доступен для повторной индексации.')) return;
                                     var csrf = $('meta[name="_csrf"]').attr('content');
                                     var csrfHeader = $('meta[name="_csrf_header"]').attr('content');
                                     $.ajax({

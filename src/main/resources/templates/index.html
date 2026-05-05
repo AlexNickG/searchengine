@@ -179,6 +179,53 @@
                     <div id="conn-msg" style="font-size:13px;margin-top:8px;display:none;"></div>
                   </div>
                 </div>
+
+                <div id="users-config-section" style="margin-top:28px;">
+                  <h3 style="margin-bottom:12px;">Пользователи</h3>
+                  <table id="users-table" style="width:100%;max-width:620px;border-collapse:collapse;margin-bottom:16px;font-size:14px;">
+                    <thead>
+                      <tr style="background:#f0f0f0;">
+                        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid #ddd;">Имя пользователя</th>
+                        <th style="text-align:left;padding:8px 10px;border-bottom:1px solid #ddd;">Роль</th>
+                        <th style="padding:8px 10px;border-bottom:1px solid #ddd;width:180px;"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="users-tbody"></tbody>
+                  </table>
+
+                  <div id="user-chpwd-form-wrap" style="display:none;background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;padding:16px;max-width:620px;margin-bottom:16px;">
+                    <h4 style="margin:0 0 12px;font-size:14px;">Сменить пароль: <span id="user-chpwd-name" style="font-weight:700;"></span></h4>
+                    <input type="hidden" id="user-chpwd-id"/>
+                    <div class="form-group form-group_row" style="margin-bottom:10px;">
+                      <input class="form-input" id="user-chpwd-input" type="password" placeholder="Новый пароль (минимум 4 символа)" style="flex:2;"/>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                      <button class="btn btn_primary" id="user-chpwd-save-btn" type="button">Сохранить</button>
+                      <button class="btn" id="user-chpwd-cancel-btn" type="button">Отмена</button>
+                    </div>
+                    <div id="user-chpwd-msg" style="font-size:13px;margin-top:8px;display:none;"></div>
+                  </div>
+
+                  <div id="user-add-form-wrap" style="background:#f9f9f9;border:1px solid #e0e0e0;border-radius:6px;padding:16px;max-width:620px;">
+                    <h4 style="margin:0 0 12px;font-size:14px;">Добавить пользователя</h4>
+                    <div class="form-group form-group_row" style="margin-bottom:10px;">
+                      <input class="form-input" id="new-user-username" type="text" placeholder="Имя пользователя" style="flex:2;"/>
+                    </div>
+                    <div class="form-group form-group_row" style="margin-bottom:10px;">
+                      <input class="form-input" id="new-user-password" type="password" placeholder="Пароль (минимум 4 символа)" style="flex:2;"/>
+                    </div>
+                    <div class="form-group form-group_row" style="margin-bottom:10px;">
+                      <select class="form-select" id="new-user-role" style="flex:2;">
+                        <option value="ROLE_USER">Пользователь</option>
+                        <option value="ROLE_ADMIN">Администратор</option>
+                      </select>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                      <button class="btn btn_primary" id="user-add-btn" type="button">Добавить</button>
+                    </div>
+                    <div id="user-add-error" style="color:#c0392b;font-size:13px;margin-top:8px;display:none;"></div>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="Tabs-block" id="search">
@@ -341,12 +388,14 @@
     $('a[href="#management"]').on('click', function () {
       loadSites();
       loadConnectionSettings();
+      loadUsers();
     });
     // Also load on page ready if management tab is active
     $(function () {
       if (window.location.hash === '#management') {
         loadSites();
         loadConnectionSettings();
+        loadUsers();
       }
     });
   </script>
@@ -387,5 +436,112 @@
       el.text(text).css('color', ok ? '#27ae60' : '#c0392b').show();
       setTimeout(function () { el.hide(); }, 3000);
     }
+  </script>
+  <script>
+    /* ---- User Management ---- */
+    var usersApi = backendApiUrl + '/admin/users';
+
+    function loadUsers() {
+      $.getJSON(usersApi, function (data) {
+        var tbody = $('#users-tbody').empty();
+        if (!data || data.length === 0) {
+          tbody.append('<tr><td colspan="3" style="padding:8px 10px;color:#999;">Нет пользователей</td></tr>');
+          return;
+        }
+        data.forEach(function (u) {
+          var roleLabel = u.role === 'ROLE_ADMIN' ? 'Администратор' : 'Пользователь';
+          tbody.append(
+            '<tr data-id="' + u.id + '">' +
+              '<td style="padding:7px 10px;border-bottom:1px solid #eee;">' + $('<span>').text(u.username).html() + '</td>' +
+              '<td style="padding:7px 10px;border-bottom:1px solid #eee;">' + roleLabel + '</td>' +
+              '<td style="padding:7px 10px;border-bottom:1px solid #eee;white-space:nowrap;">' +
+                '<button class="btn btn_primary user-chpwd-btn" data-id="' + u.id + '" data-name="' + $('<span>').text(u.username).html() + '" style="padding:3px 10px;font-size:12px;margin-right:4px;">Сменить пароль</button>' +
+                '<button class="btn user-del-btn" data-id="' + u.id + '" style="padding:3px 10px;font-size:12px;background:#e74c3c;color:#fff;border-color:#e74c3c;">Удалить</button>' +
+              '</td>' +
+            '</tr>'
+          );
+        });
+      });
+    }
+
+    $(document).on('click', '.user-chpwd-btn', function () {
+      var $btn = $(this);
+      $('#user-chpwd-id').val($btn.data('id'));
+      $('#user-chpwd-name').text($btn.data('name'));
+      $('#user-chpwd-input').val('');
+      $('#user-chpwd-msg').hide();
+      $('#user-chpwd-form-wrap').show();
+      $('html, body').animate({ scrollTop: $('#user-chpwd-form-wrap').offset().top - 20 }, 200);
+    });
+
+    $(document).on('click', '.user-del-btn', function () {
+      var id = $(this).data('id');
+      if (!confirm('Удалить пользователя?')) return;
+      $.ajax({
+        url: usersApi + '/' + id,
+        type: 'DELETE',
+        success: function () { loadUsers(); },
+        error: function (xhr) {
+          var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Ошибка удаления';
+          alert(msg);
+        }
+      });
+    });
+
+    $('#user-chpwd-cancel-btn').on('click', function () {
+      $('#user-chpwd-form-wrap').hide();
+    });
+
+    $('#user-chpwd-save-btn').on('click', function () {
+      var id  = $('#user-chpwd-id').val();
+      var pwd = $('#user-chpwd-input').val();
+      var $msg = $('#user-chpwd-msg');
+      if (!pwd || pwd.length < 4) {
+        $msg.text('Пароль должен быть не менее 4 символов').css('color', '#c0392b').show();
+        return;
+      }
+      $.ajax({
+        url: usersApi + '/' + id + '/password',
+        type: 'PATCH',
+        contentType: 'application/json',
+        data: JSON.stringify({ newPassword: pwd }),
+        success: function () {
+          $msg.text('Пароль изменён').css('color', '#27ae60').show();
+          setTimeout(function () { $('#user-chpwd-form-wrap').hide(); }, 1500);
+        },
+        error: function (xhr) {
+          var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Ошибка';
+          $msg.text(msg).css('color', '#c0392b').show();
+        }
+      });
+    });
+
+    $('#user-add-btn').on('click', function () {
+      var username = $.trim($('#new-user-username').val());
+      var password = $('#new-user-password').val();
+      var role     = $('#new-user-role').val();
+      var $err     = $('#user-add-error');
+
+      if (!username) { $err.text('Введите имя пользователя').show(); return; }
+      if (!password || password.length < 4) { $err.text('Пароль должен быть не менее 4 символов').show(); return; }
+
+      $.ajax({
+        url: usersApi,
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ username: username, password: password, role: role }),
+        success: function () {
+          $('#new-user-username').val('');
+          $('#new-user-password').val('');
+          $('#new-user-role').val('ROLE_USER');
+          $err.hide();
+          loadUsers();
+        },
+        error: function (xhr) {
+          var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Ошибка';
+          $err.text(msg).show();
+        }
+      });
+    });
   </script>
 </body></html>

@@ -11,6 +11,10 @@ import searchengine.config.ConnectionSettings;
 import searchengine.dto.captcha.CaptchaChallenge;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
@@ -94,32 +98,38 @@ public class CaptchaInteractionService {
         challenge.setId(UUID.randomUUID().toString());
         challenge.setPageUrl(actualPageUrl);
 
-        Element form = page.selectFirst("form");
-        Element captchaInput = form != null ? form.selectFirst(
+        // Captcha input ищем по всей странице (не ограничиваясь первой формой)
+        Element captchaInput = page.selectFirst(
                 "input[name=captcha], input[name*=captcha], input[name=code], input[name*=verify], " +
-                "input[name*=answer]") : null;
+                "input[name*=answer]");
+
+        // Форму берём как ближайшего предка captcha-input; если такого нет — первую <form> на странице
+        Element form = null;
+        if (captchaInput != null) {
+            for (Element p = captchaInput.parent(); p != null; p = p.parent()) {
+                if ("form".equalsIgnoreCase(p.tagName())) { form = p; break; }
+            }
+        }
+        if (form == null) form = page.selectFirst("form");
+        log.info("CAPTCHA extract: input found={}, form found={}", captchaInput != null, form != null);
 
         Element captchaImg = null;
         // 1. Ищем <img> ближайшую к captcha-input в порядке документа: перебираем previous siblings,
-        //    затем поднимаемся уровнем выше. Это исключает выхватывание "верхних" декоративных иконок
-        //    (например, top_calc.gif на vap.sudrf.ru), которые лежат раньше в DOM.
+        //    затем поднимаемся уровнем выше. Исключает выхватывание "верхних" декоративных иконок
+        //    (например, top_calc.gif), которые лежат раньше в DOM.
         if (captchaInput != null) {
             Element current = captchaInput;
             outer:
             while (current != null) {
-                Element sib = current.previousElementSibling();
-                while (sib != null) {
+                for (Element sib = current.previousElementSibling(); sib != null; sib = sib.previousElementSibling()) {
                     if ("img".equalsIgnoreCase(sib.tagName())) { captchaImg = sib; break outer; }
                     Element nested = sib.selectFirst("img");
                     if (nested != null) { captchaImg = nested; break outer; }
-                    sib = sib.previousElementSibling();
                 }
-                sib = current.nextElementSibling();
-                while (sib != null) {
+                for (Element sib = current.nextElementSibling(); sib != null; sib = sib.nextElementSibling()) {
                     if ("img".equalsIgnoreCase(sib.tagName())) { captchaImg = sib; break outer; }
                     Element nested = sib.selectFirst("img");
                     if (nested != null) { captchaImg = nested; break outer; }
-                    sib = sib.nextElementSibling();
                 }
                 current = current.parent();
             }
@@ -131,12 +141,27 @@ public class CaptchaInteractionService {
                     "img[src*=code], img[src*=verify], img[src*=check], " +
                     "img[alt*=captcha], img[alt*=код], img[alt*=капч]");
         }
+        // 3. Last-ditch: первая <img> с src, начинающимся на data:
+        if (captchaImg == null) {
+            for (Element img : page.select("img[src]")) {
+                String s = img.attr("src").trim();
+                if (s.toLowerCase().startsWith("data:")) { captchaImg = img; break; }
+            }
+        }
         if (captchaImg != null) {
             String preview = captchaImg.attr("src");
             if (preview.length() > 80) preview = preview.substring(0, 80) + "...";
             log.info("CAPTCHA img selected: src='{}'", preview);
         } else {
-            log.info("CAPTCHA img selector found nothing on {}", actualPageUrl);
+            log.warn("CAPTCHA img selector found nothing on {}", actualPageUrl);
+            try {
+                Path dump = Paths.get("logs", "captcha-page-" + System.currentTimeMillis() + ".html");
+                Files.createDirectories(dump.getParent());
+                Files.writeString(dump, page.html(), StandardCharsets.UTF_8);
+                log.warn("Search-form HTML dumped for analysis: {}", dump.toAbsolutePath());
+            } catch (IOException e) {
+                log.warn("Failed to dump search-form HTML: {}", e.getMessage());
+            }
         }
 
         if (captchaImg != null) {

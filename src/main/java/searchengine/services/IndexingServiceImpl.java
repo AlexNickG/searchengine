@@ -280,7 +280,22 @@ public class IndexingServiceImpl implements IndexingService {
                 }
                 sessionRecovered = true;
                 log.info("Session expired at {}, recovering via search form", link);
-                if (!recoverFromSessionExpired(result.document(), site)) return null;
+                RecoveryResult rec = recoverFromSessionExpired(result.document(), site);
+                if (!rec.success()) return null;
+                Document recoveredDoc = rec.recoveredDocument();
+                if (recoveredDoc != null) {
+                    // Используем ответ POST формы напрямую — у него свежая сессия и реальные результаты,
+                    // а повторный GET того же URL с протухшими captcha=...&captchaid=... в query сервер отвергает
+                    Page page = new Page();
+                    if (method == INDEXING_ONE_PAGE) {
+                        page = pageProcessorService.updatePage(path, site.getId());
+                    }
+                    lemmaFinder.collectLemmas(
+                            pageRepository.save(fillThePage(page, path, site, recoveredDoc.html(), 200)).getId());
+                    setSiteStatus(site);
+                    log.info("Page saved via session-recovery POST response: {}", link);
+                    return recoveredDoc;
+                }
                 continue;
             }
 
@@ -398,9 +413,9 @@ public class IndexingServiceImpl implements IndexingService {
         return null;
     }
 
-    private void submitCaptchaForm(Site site, CaptchaChallenge challenge, String solution,
-                                   Map<String, String> extraFields) {
-        if (challenge.getFormAction() == null || challenge.getCaptchaFieldName() == null) return;
+    private Document submitCaptchaForm(Site site, CaptchaChallenge challenge, String solution,
+                                       Map<String, String> extraFields) {
+        if (challenge.getFormAction() == null || challenge.getCaptchaFieldName() == null) return null;
         try {
             Map<String, String> formData = new LinkedHashMap<>();
             if (challenge.getHiddenFields() != null) formData.putAll(challenge.getHiddenFields());
@@ -425,27 +440,31 @@ public class IndexingServiceImpl implements IndexingService {
                     merged.putAll(newCookies);
                     return merged;
                 });
-                log.info("CAPTCHA form submitted, {} new cookies received", newCookies.size());
             }
+            log.info("CAPTCHA form submitted, status={}, {} new cookies", response.statusCode(), newCookies.size());
+            return response.parse();
         } catch (IOException e) {
             log.warn("Failed to submit CAPTCHA form: {}", e.getMessage());
+            return null;
         }
     }
 
-    private boolean recoverFromSessionExpired(Document expiredPage, Site site) {
+    private record RecoveryResult(boolean success, Document recoveredDocument) {}
+
+    private RecoveryResult recoverFromSessionExpired(Document expiredPage, Site site) {
         Element backLink = expiredPage.select("a").stream()
                 .filter(a -> a.text().toLowerCase().contains("форму поиска"))
                 .findFirst().orElse(null);
         if (backLink == null) {
             log.warn("Session expired page has no 'Вернуться на форму поиска' link");
-            return false;
+            return new RecoveryResult(false, null);
         }
         String baseUrl = expiredPage.location();
         if (baseUrl == null || baseUrl.isEmpty()) baseUrl = site.getUrl();
         String formPageUrl = extractBackToFormUrl(backLink, baseUrl);
         if (formPageUrl == null || formPageUrl.isEmpty()) {
             log.warn("Cannot extract back-to-form URL from anchor: {}", backLink.outerHtml());
-            return false;
+            return new RecoveryResult(false, null);
         }
         log.info("Recovering session for {} via search form: {}", site.getUrl(), formPageUrl);
 
@@ -455,11 +474,11 @@ public class IndexingServiceImpl implements IndexingService {
         Document formPage = fetchSearchForm(formPageUrl, site);
         if (formPage == null) {
             log.warn("Failed to fetch search form during session recovery");
-            return false;
+            return new RecoveryResult(false, null);
         }
         if (captchaDetector.detect(200, formPage.html()) == CaptchaDetector.BlockType.SESSION_EXPIRED) {
             log.warn("Search form page returned session-expired even after clearing cookies: {}", formPageUrl);
-            return false;
+            return new RecoveryResult(false, null);
         }
 
         Map<String, String> cookies = new HashMap<>(siteCookies.getOrDefault(site.getUrl(), Map.of()));
@@ -467,20 +486,24 @@ public class IndexingServiceImpl implements IndexingService {
                 captchaInteractionService.awaitSolution(formPageUrl, formPage, cookies);
         if (solved == null) {
             log.info("Session recovery aborted (timeout or interruption) for {}", site.getUrl());
-            return false;
+            return new RecoveryResult(false, null);
         }
         if (solved.challenge() == null) {
             log.info("Session for {} recovered concurrently by another task", site.getUrl());
-            return true;
+            return new RecoveryResult(true, null); // успех, документа нет — внешний цикл повторит fetch
         }
 
         Map<String, String> originalParams = extractQueryParams(getConfiguredStartUrl(site));
         originalParams.remove("captcha");
         originalParams.remove("captchaid");
 
-        submitCaptchaForm(site, solved.challenge(), solved.solution(), originalParams);
-        log.info("Session recovery completed for {}", site.getUrl());
-        return true;
+        Document recovered = submitCaptchaForm(site, solved.challenge(), solved.solution(), originalParams);
+        if (recovered == null) {
+            log.warn("Session recovery: form POST failed for {}", site.getUrl());
+            return new RecoveryResult(false, null);
+        }
+        log.info("Session recovery completed for {} (POST response will be used as page content)", site.getUrl());
+        return new RecoveryResult(true, recovered);
     }
 
     private String extractBackToFormUrl(Element backLink, String baseUrl) {

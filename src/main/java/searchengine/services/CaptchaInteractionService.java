@@ -118,15 +118,28 @@ public class CaptchaInteractionService {
         }
 
         if (captchaImg != null) {
-            String imgSrc = resolveUrl(captchaImg.absUrl("src"), captchaImg.attr("src"), actualPageUrl);
-            if (imgSrc != null) {
-                log.info("Downloading CAPTCHA image from: {}", imgSrc);
-                challenge.setImageBase64(downloadImageAsBase64(imgSrc, actualPageUrl, sessionCookies));
-                if (challenge.getImageBase64() == null) {
-                    log.warn("Failed to download CAPTCHA image, falling back to URL-only modal");
-                }
+            String rawSrc = captchaImg.attr("src");
+            if (rawSrc != null && rawSrc.trim().toLowerCase().startsWith("data:")) {
+                // Картинка встроена прямо в HTML — нормализуем пробелы и отдаём как есть
+                String trimmed = rawSrc.trim();
+                int comma = trimmed.indexOf(',');
+                String dataUrl = (comma > 0)
+                        ? trimmed.substring(0, comma + 1).replaceAll("\\s+", "")
+                                + trimmed.substring(comma + 1).replaceAll("\\s+", "")
+                        : trimmed.replaceAll("\\s+", "");
+                challenge.setImageBase64(dataUrl);
+                log.info("CAPTCHA image extracted from inline data URL ({} chars)", dataUrl.length());
             } else {
-                log.warn("Could not determine CAPTCHA image URL, img element: {}", captchaImg.outerHtml());
+                String imgSrc = resolveUrl(captchaImg.absUrl("src"), captchaImg.attr("src"), actualPageUrl);
+                if (imgSrc != null) {
+                    log.info("Downloading CAPTCHA image from: {}", imgSrc);
+                    challenge.setImageBase64(downloadImageAsBase64(imgSrc, actualPageUrl, sessionCookies));
+                    if (challenge.getImageBase64() == null) {
+                        log.warn("Failed to download CAPTCHA image, falling back to URL-only modal");
+                    }
+                } else {
+                    log.warn("Could not determine CAPTCHA image URL, img element: {}", captchaImg.outerHtml());
+                }
             }
         } else {
             log.warn("No CAPTCHA image element found on page: {}", actualPageUrl);

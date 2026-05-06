@@ -100,13 +100,28 @@ public class CaptchaInteractionService {
                 "input[name*=answer]") : null;
 
         Element captchaImg = null;
-        // 1. Image near the captcha input — настоящая капча всегда рядом со своим input
+        // 1. Ищем <img> ближайшую к captcha-input в порядке документа: перебираем previous siblings,
+        //    затем поднимаемся уровнем выше. Это исключает выхватывание "верхних" декоративных иконок
+        //    (например, top_calc.gif на vap.sudrf.ru), которые лежат раньше в DOM.
         if (captchaInput != null) {
-            Element node = captchaInput.parent();
-            while (node != null) {
-                Element img = node.selectFirst("img");
-                if (img != null) { captchaImg = img; break; }
-                node = node.parent();
+            Element current = captchaInput;
+            outer:
+            while (current != null) {
+                Element sib = current.previousElementSibling();
+                while (sib != null) {
+                    if ("img".equalsIgnoreCase(sib.tagName())) { captchaImg = sib; break outer; }
+                    Element nested = sib.selectFirst("img");
+                    if (nested != null) { captchaImg = nested; break outer; }
+                    sib = sib.previousElementSibling();
+                }
+                sib = current.nextElementSibling();
+                while (sib != null) {
+                    if ("img".equalsIgnoreCase(sib.tagName())) { captchaImg = sib; break outer; }
+                    Element nested = sib.selectFirst("img");
+                    if (nested != null) { captchaImg = nested; break outer; }
+                    sib = sib.nextElementSibling();
+                }
+                current = current.parent();
             }
         }
         // 2. Fallback: image with explicit captcha-ish src or alt
@@ -115,6 +130,13 @@ public class CaptchaInteractionService {
                     "img[src*=captcha], img[src*=Captcha], img[src*=CAPTCHA], " +
                     "img[src*=code], img[src*=verify], img[src*=check], " +
                     "img[alt*=captcha], img[alt*=код], img[alt*=капч]");
+        }
+        if (captchaImg != null) {
+            String preview = captchaImg.attr("src");
+            if (preview.length() > 80) preview = preview.substring(0, 80) + "...";
+            log.info("CAPTCHA img selected: src='{}'", preview);
+        } else {
+            log.info("CAPTCHA img selector found nothing on {}", actualPageUrl);
         }
 
         if (captchaImg != null) {

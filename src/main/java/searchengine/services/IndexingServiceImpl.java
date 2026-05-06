@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.springframework.stereotype.Service;
 import searchengine.Repositories.IndexRepository;
 import searchengine.Repositories.LemmaRepository;
@@ -28,6 +29,8 @@ import org.springframework.web.client.UnknownContentTypeException;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
@@ -264,6 +267,19 @@ public class IndexingServiceImpl implements IndexingService {
             FetchResult result = fetchWithRetry(link, site);
             if (result == null) return null;
 
+            if (result.blockType() == CaptchaDetector.BlockType.SESSION_EXPIRED) {
+                if (captchaRound == 0) {
+                    log.info("Session expired at {}, recovering via search form", link);
+                    if (recoverFromSessionExpired(result.document(), site)) {
+                        continue;
+                    }
+                    return null;
+                } else {
+                    log.warn("Session still expired after recovery attempt, skipping: {}", link);
+                    return null;
+                }
+            }
+
             if (result.blockType() == CaptchaDetector.BlockType.CAPTCHA_IMAGE) {
                 if (captchaRound == 0) {
                     log.info("CAPTCHA detected at {}, requesting operator input", link);
@@ -272,7 +288,7 @@ public class IndexingServiceImpl implements IndexingService {
                             captchaInteractionService.awaitSolution(link, result.document(), cookies);
                     if (solved == null) return null; // таймаут — пропускаем страницу
                     if (solved.challenge() != null) {
-                        submitCaptchaForm(site, solved.challenge(), solved.solution()); // решили сами
+                        submitCaptchaForm(site, solved.challenge(), solved.solution(), null); // решили сами
                     }
                     // solved.challenge()==null: другая задача решила — просто повторяем с новыми cookies
                     continue;
@@ -377,11 +393,13 @@ public class IndexingServiceImpl implements IndexingService {
         return null;
     }
 
-    private void submitCaptchaForm(Site site, CaptchaChallenge challenge, String solution) {
+    private void submitCaptchaForm(Site site, CaptchaChallenge challenge, String solution,
+                                   Map<String, String> extraFields) {
         if (challenge.getFormAction() == null || challenge.getCaptchaFieldName() == null) return;
         try {
-            Map<String, String> formData = new HashMap<>();
+            Map<String, String> formData = new LinkedHashMap<>();
             if (challenge.getHiddenFields() != null) formData.putAll(challenge.getHiddenFields());
+            if (extraFields != null) formData.putAll(extraFields);
             formData.put(challenge.getCaptchaFieldName(), solution);
 
             Connection.Response response = Jsoup.connect(challenge.getFormAction())
@@ -391,6 +409,7 @@ public class IndexingServiceImpl implements IndexingService {
                     .cookies(new HashMap<>(siteCookies.getOrDefault(site.getUrl(), Map.of())))
                     .method(Connection.Method.POST)
                     .timeout(connectionTimeout)
+                    .followRedirects(true)
                     .ignoreHttpErrors(true)
                     .execute();
 
@@ -406,6 +425,90 @@ public class IndexingServiceImpl implements IndexingService {
         } catch (IOException e) {
             log.warn("Failed to submit CAPTCHA form: {}", e.getMessage());
         }
+    }
+
+    private boolean recoverFromSessionExpired(Document expiredPage, Site site) {
+        Element backLink = expiredPage.select("a").stream()
+                .filter(a -> a.text().toLowerCase().contains("форму поиска"))
+                .findFirst().orElse(null);
+        if (backLink == null) {
+            log.warn("Session expired page has no 'Вернуться на форму поиска' link");
+            return false;
+        }
+        String formPageUrl = backLink.absUrl("href");
+        if (formPageUrl.isEmpty()) formPageUrl = backLink.attr("href");
+        if (formPageUrl == null || formPageUrl.isEmpty()) {
+            log.warn("Empty href on 'back to search form' link");
+            return false;
+        }
+
+        Document formPage = fetchSearchForm(formPageUrl, site);
+        if (formPage == null) return false;
+
+        Map<String, String> cookies = new HashMap<>(siteCookies.getOrDefault(site.getUrl(), Map.of()));
+        CaptchaInteractionService.SolvedChallenge solved =
+                captchaInteractionService.awaitSolution(formPageUrl, formPage, cookies);
+        if (solved == null) return false; // таймаут / прерывание
+        if (solved.challenge() == null) return true; // другой поток уже восстановил сессию
+
+        Map<String, String> originalParams = extractQueryParams(getConfiguredStartUrl(site));
+        submitCaptchaForm(site, solved.challenge(), solved.solution(), originalParams);
+        return true;
+    }
+
+    private Document fetchSearchForm(String url, Site site) {
+        try {
+            Connection.Response response = Jsoup.connect(url)
+                    .ignoreHttpErrors(true)
+                    .followRedirects(true)
+                    .userAgent(connectionSettings.getUserAgent())
+                    .referrer(connectionSettings.getReferrer())
+                    .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
+                    .timeout(connectionTimeout)
+                    .cookies(new HashMap<>(siteCookies.getOrDefault(site.getUrl(), Map.of())))
+                    .execute();
+            Map<String, String> respCookies = response.cookies();
+            if (!respCookies.isEmpty()) {
+                siteCookies.compute(site.getUrl(), (k, existing) -> {
+                    Map<String, String> merged = existing != null ? new HashMap<>(existing) : new HashMap<>();
+                    merged.putAll(respCookies);
+                    return merged;
+                });
+            }
+            return response.parse();
+        } catch (IOException e) {
+            log.warn("Failed to fetch search form at {}: {}", url, e.getMessage());
+            return null;
+        }
+    }
+
+    private String getConfiguredStartUrl(Site site) {
+        return sites.getSites().stream()
+                .filter(s -> site.getUrl().equals(s.getUrl()))
+                .findFirst()
+                .map(s -> {
+                    String su = s.getStartUrl();
+                    return (su != null && !su.isBlank()) ? su : s.getUrl();
+                })
+                .orElse(site.getUrl());
+    }
+
+    private Map<String, String> extractQueryParams(String url) {
+        Map<String, String> params = new LinkedHashMap<>();
+        try {
+            String query = new URL(url).getQuery();
+            if (query == null || query.isEmpty()) return params;
+            for (String pair : query.split("&")) {
+                int eq = pair.indexOf('=');
+                String name = eq >= 0 ? pair.substring(0, eq) : pair;
+                String value = eq >= 0 ? pair.substring(eq + 1) : "";
+                params.put(URLDecoder.decode(name, StandardCharsets.UTF_8),
+                        URLDecoder.decode(value, StandardCharsets.UTF_8));
+            }
+        } catch (MalformedURLException e) {
+            log.warn("Cannot parse query params from {}: {}", url, e.getMessage());
+        }
+        return params;
     }
 
     public ResponseMessage sendResponse(boolean result, String message) {

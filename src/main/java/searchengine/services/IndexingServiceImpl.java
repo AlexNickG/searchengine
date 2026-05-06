@@ -283,9 +283,11 @@ public class IndexingServiceImpl implements IndexingService {
                 RecoveryResult rec = recoverFromSessionExpired(result.document(), site);
                 if (!rec.success()) return null;
                 Document recoveredDoc = rec.recoveredDocument();
-                if (recoveredDoc != null) {
-                    // Используем ответ POST формы напрямую — у него свежая сессия и реальные результаты,
-                    // а повторный GET того же URL с протухшими captcha=...&captchaid=... в query сервер отвергает
+                // POST-ответ восстановления применим к исходной странице ТОЛЬКО если link==startUrl,
+                // потому что POST шлёт originalParams (параметры startUrl). Для дочерних страниц
+                // нужен обычный GET с новыми cookies — делаем continue.
+                String configuredStart = getConfiguredStartUrl(site);
+                if (recoveredDoc != null && link.equals(configuredStart)) {
                     Page page = new Page();
                     if (method == INDEXING_ONE_PAGE) {
                         page = pageProcessorService.updatePage(path, site.getId());
@@ -293,7 +295,7 @@ public class IndexingServiceImpl implements IndexingService {
                     lemmaFinder.collectLemmas(
                             pageRepository.save(fillThePage(page, path, site, recoveredDoc.html(), 200)).getId());
                     setSiteStatus(site);
-                    log.info("Page saved via session-recovery POST response: {}", link);
+                    log.info("Start page saved via session-recovery POST response: {}", link);
                     return recoveredDoc;
                 }
                 continue;

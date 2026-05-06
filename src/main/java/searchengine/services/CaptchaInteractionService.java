@@ -94,8 +94,29 @@ public class CaptchaInteractionService {
         challenge.setId(UUID.randomUUID().toString());
         challenge.setPageUrl(actualPageUrl);
 
-        Element captchaImg = page.selectFirst("img[src*=captcha], img[src*=code], img[src*=verify], img[src*=check]");
-        if (captchaImg == null) captchaImg = page.selectFirst("form img");
+        Element form = page.selectFirst("form");
+        Element captchaInput = form != null ? form.selectFirst(
+                "input[name=captcha], input[name*=captcha], input[name=code], input[name*=verify], " +
+                "input[name*=answer]") : null;
+
+        Element captchaImg = null;
+        // 1. Image near the captcha input — настоящая капча всегда рядом со своим input
+        if (captchaInput != null) {
+            Element node = captchaInput.parent();
+            while (node != null) {
+                Element img = node.selectFirst("img");
+                if (img != null) { captchaImg = img; break; }
+                node = node.parent();
+            }
+        }
+        // 2. Fallback: image with explicit captcha-ish src or alt
+        if (captchaImg == null) {
+            captchaImg = page.selectFirst(
+                    "img[src*=captcha], img[src*=Captcha], img[src*=CAPTCHA], " +
+                    "img[src*=code], img[src*=verify], img[src*=check], " +
+                    "img[alt*=captcha], img[alt*=код], img[alt*=капч]");
+        }
+
         if (captchaImg != null) {
             String imgSrc = resolveUrl(captchaImg.absUrl("src"), captchaImg.attr("src"), actualPageUrl);
             if (imgSrc != null) {
@@ -111,7 +132,6 @@ public class CaptchaInteractionService {
             log.warn("No CAPTCHA image element found on page: {}", actualPageUrl);
         }
 
-        Element form = page.selectFirst("form");
         if (form != null) {
             String action = resolveUrl(form.absUrl("action"), form.attr("action"), actualPageUrl);
             challenge.setFormAction(action != null ? action : actualPageUrl);
@@ -123,9 +143,6 @@ public class CaptchaInteractionService {
             });
             challenge.setHiddenFields(hiddenFields);
 
-            Element captchaInput = form.selectFirst(
-                    "input[name*=captcha], input[name*=code], input[name*=verify], " +
-                    "input[name*=answer], input[type=text]:not([type=hidden])");
             if (captchaInput != null) {
                 challenge.setCaptchaFieldName(captchaInput.attr("name"));
             }

@@ -34,6 +34,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -263,43 +265,46 @@ public class IndexingServiceImpl implements IndexingService {
             return null;
         }
 
-        for (int captchaRound = 0; captchaRound < 2; captchaRound++) {
+        boolean sessionRecovered = false;
+        boolean captchaSolved = false;
+        for (int round = 0; round < 4; round++) {
             FetchResult result = fetchWithRetry(link, site);
             if (result == null) return null;
 
-            if (result.blockType() == CaptchaDetector.BlockType.SESSION_EXPIRED) {
-                if (captchaRound == 0) {
-                    log.info("Session expired at {}, recovering via search form", link);
-                    if (recoverFromSessionExpired(result.document(), site)) {
-                        continue;
-                    }
-                    return null;
-                } else {
-                    log.warn("Session still expired after recovery attempt, skipping: {}", link);
+            CaptchaDetector.BlockType bt = result.blockType();
+
+            if (bt == CaptchaDetector.BlockType.SESSION_EXPIRED) {
+                if (sessionRecovered) {
+                    log.warn("Session still expired after recovery, skipping: {}", link);
                     return null;
                 }
+                sessionRecovered = true;
+                log.info("Session expired at {}, recovering via search form", link);
+                if (!recoverFromSessionExpired(result.document(), site)) return null;
+                continue;
             }
 
-            if (result.blockType() == CaptchaDetector.BlockType.CAPTCHA_IMAGE) {
-                if (captchaRound == 0) {
-                    log.info("CAPTCHA detected at {}, requesting operator input", link);
-                    Map<String, String> cookies = new HashMap<>(siteCookies.getOrDefault(site.getUrl(), Map.of()));
-                    CaptchaInteractionService.SolvedChallenge solved =
-                            captchaInteractionService.awaitSolution(link, result.document(), cookies);
-                    if (solved == null) return null; // таймаут — пропускаем страницу
-                    if (solved.challenge() != null) {
-                        submitCaptchaForm(site, solved.challenge(), solved.solution(), null); // решили сами
-                    }
-                    // solved.challenge()==null: другая задача решила — просто повторяем с новыми cookies
-                    continue;
-                } else {
-                    // CAPTCHA повторилась после решения — пропускаем, не сохраняем мусор в БД
-                    log.warn("CAPTCHA persists after solving attempt, skipping: {}", link);
+            if (bt == CaptchaDetector.BlockType.CAPTCHA_IMAGE) {
+                if (captchaSolved) {
+                    log.warn("CAPTCHA persists after solving, skipping: {}", link);
                     return null;
                 }
+                captchaSolved = true;
+                log.info("CAPTCHA detected at {}, requesting operator input", link);
+                Map<String, String> cookies = new HashMap<>(siteCookies.getOrDefault(site.getUrl(), Map.of()));
+                CaptchaInteractionService.SolvedChallenge solved =
+                        captchaInteractionService.awaitSolution(link, result.document(), cookies);
+                if (solved == null) return null;
+                if (solved.challenge() != null) {
+                    Map<String, String> originalParams = extractQueryParams(getConfiguredStartUrl(site));
+                    originalParams.remove("captcha");
+                    originalParams.remove("captchaid");
+                    submitCaptchaForm(site, solved.challenge(), solved.solution(), originalParams);
+                }
+                continue;
             }
 
-            if (result.blockType() == CaptchaDetector.BlockType.BLOCKED) {
+            if (bt == CaptchaDetector.BlockType.BLOCKED) {
                 log.warn("Access blocked (403): {}", link);
                 return null;
             }
@@ -435,25 +440,72 @@ public class IndexingServiceImpl implements IndexingService {
             log.warn("Session expired page has no 'Вернуться на форму поиска' link");
             return false;
         }
-        String formPageUrl = backLink.absUrl("href");
-        if (formPageUrl.isEmpty()) formPageUrl = backLink.attr("href");
+        String baseUrl = expiredPage.location();
+        if (baseUrl == null || baseUrl.isEmpty()) baseUrl = site.getUrl();
+        String formPageUrl = extractBackToFormUrl(backLink, baseUrl);
         if (formPageUrl == null || formPageUrl.isEmpty()) {
-            log.warn("Empty href on 'back to search form' link");
+            log.warn("Cannot extract back-to-form URL from anchor: {}", backLink.outerHtml());
             return false;
         }
+        log.info("Recovering session for {} via search form: {}", site.getUrl(), formPageUrl);
+
+        // Без сброса cookies сервер снова отдаст session-expired
+        siteCookies.remove(site.getUrl());
 
         Document formPage = fetchSearchForm(formPageUrl, site);
-        if (formPage == null) return false;
+        if (formPage == null) {
+            log.warn("Failed to fetch search form during session recovery");
+            return false;
+        }
+        if (captchaDetector.detect(200, formPage.html()) == CaptchaDetector.BlockType.SESSION_EXPIRED) {
+            log.warn("Search form page returned session-expired even after clearing cookies: {}", formPageUrl);
+            return false;
+        }
 
         Map<String, String> cookies = new HashMap<>(siteCookies.getOrDefault(site.getUrl(), Map.of()));
         CaptchaInteractionService.SolvedChallenge solved =
                 captchaInteractionService.awaitSolution(formPageUrl, formPage, cookies);
-        if (solved == null) return false; // таймаут / прерывание
-        if (solved.challenge() == null) return true; // другой поток уже восстановил сессию
+        if (solved == null) {
+            log.info("Session recovery aborted (timeout or interruption) for {}", site.getUrl());
+            return false;
+        }
+        if (solved.challenge() == null) {
+            log.info("Session for {} recovered concurrently by another task", site.getUrl());
+            return true;
+        }
 
         Map<String, String> originalParams = extractQueryParams(getConfiguredStartUrl(site));
+        originalParams.remove("captcha");
+        originalParams.remove("captchaid");
+
         submitCaptchaForm(site, solved.challenge(), solved.solution(), originalParams);
+        log.info("Session recovery completed for {}", site.getUrl());
         return true;
+    }
+
+    private String extractBackToFormUrl(Element backLink, String baseUrl) {
+        String href = backLink.attr("href");
+        if (href != null && !href.isBlank() && !"#".equals(href.trim())) {
+            String abs = backLink.absUrl("href");
+            if (!abs.isBlank() && !abs.endsWith("#")) return abs;
+        }
+        String onclick = backLink.attr("onclick");
+        if (onclick == null || onclick.isBlank()) return null;
+        // Конкатенируем все литералы (строки в кавычках + голые числа) из JS-выражения
+        Matcher m = Pattern.compile("'([^']*)'|\"([^\"]*)\"|(\\d+)").matcher(onclick);
+        StringBuilder rel = new StringBuilder();
+        while (m.find()) {
+            if (m.group(1) != null)      rel.append(m.group(1));
+            else if (m.group(2) != null) rel.append(m.group(2));
+            else                         rel.append(m.group(3));
+        }
+        if (rel.length() == 0) return null;
+        try {
+            return new URL(new URL(baseUrl), rel.toString()).toString();
+        } catch (MalformedURLException e) {
+            log.warn("Cannot resolve onclick URL '{}' against {}: {}", rel, baseUrl, e.getMessage());
+            return null;
+        }
     }
 
     private Document fetchSearchForm(String url, Site site) {
